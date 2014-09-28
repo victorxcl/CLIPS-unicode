@@ -35,10 +35,10 @@
 /* Only one of these flags should be turned on (set to 1) at a time. */
 /*********************************************************************/
 
-#define GENERIC 0   /* Generic (any machine)                  */
+#define GENERIC 1   /* Generic (any machine)                  */
 #define UNIX_V  0   /* UNIX System V or 4.2bsd or HP Unix     */
 #define UNIX_7  0   /* UNIX System III Version 7 or Sun Unix  */
-#define MAC_MCW 1   /* Apple Macintosh, with Code Warrior 7.0 */
+#define MAC_MCW 0   /* Apple Macintosh, with Code Warrior 7.0 */
 #define IBM_MCW 0   /* IBM PC, with CodeWarrior 3.2           */
 #define IBM_MSC 0   /* IBM PC, with Microsoft Visual C++ 6.0  */
 #define IBM_TBC 0   /* IBM PC, with Borland C++ 5.0           */
