@@ -6,7 +6,7 @@ Make NASA CLIPS expert system tool to support unicode!
 You can compile this source code by the steps below:
 
 1. cd to the folder which contains clips and extra folders
-2. gcc -O3 -Iclips -Iunicode clips/*.c unicode/*.c -o clips.out
+2. `gcc -O3 -Iclips -Iunicode clips/*.c unicode/*.c -o clips.out`
 3. copy `clips.out` to you PATH directory and renamed to `clips`, such as /usr/local/bin/clips
 
 
@@ -25,7 +25,7 @@ I have test it in my macbook pro in 2014/9/28.
 Add unicode folder. Now compile process are:
 
 1. cd to the folder which contains clips and extra folders
-2. gcc -O3 -Iclips -Iunicode clips/*.c unicode/*.c -o clips.out
+2. `gcc -O3 -Iclips -Iunicode clips/*.c unicode/*.c -o clips.out`
 3. copy `clips.out` to you PATH directory and renamed to `clips`, such as /usr/local/bin/clips
 
 At first, I make all the files in unicode folders in a single folder `clips folder`, but I also
