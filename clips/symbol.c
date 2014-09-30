@@ -647,7 +647,8 @@ globle unsigned HashInteger(
   {
    unsigned tally;
 
-   tally = (number % range);
+   /*tally = (number % range); the original commented by pandaxcl 20140802 */ 
+   tally = ((unsigned long int)number % range);
 
    return(tally);
   }

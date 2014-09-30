@@ -321,7 +321,7 @@ globle int CompleteCommand(
          default:
            if (depth == 0)
              {
-              if (isprint(inchar))
+              if (isprint_unicode(inchar))
                 {
                  while ((inchar = mstring[i++]) != EOS)
                    {

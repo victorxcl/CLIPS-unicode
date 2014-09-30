@@ -123,7 +123,7 @@ globle void GetToken(
    /* Process Symbolic Tokens. */
    /*==========================*/
 
-   if (isalpha(inchar))
+   if (isalpha_unicode(inchar))
      {
       theToken->type = SYMBOL;
       EnvUngetcRouter(theEnv,inchar,logicalName);
@@ -170,7 +170,7 @@ globle void GetToken(
 
        case '?':
           inchar = EnvGetcRouter(theEnv,logicalName);
-          if (isalpha(inchar)
+          if (isalpha_unicode(inchar)
 #if DEFGLOBAL_CONSTRUCT
               || (inchar == '*'))
 #else
@@ -216,7 +216,7 @@ globle void GetToken(
          if ((inchar = EnvGetcRouter(theEnv,logicalName)) == '?')
            {
             inchar = EnvGetcRouter(theEnv,logicalName);
-            if (isalpha(inchar)
+            if (isalpha_unicode(inchar)
 #if DEFGLOBAL_CONSTRUCT
                  || (inchar == '*'))
 #else
@@ -324,7 +324,7 @@ globle void GetToken(
       /*=======================*/
 
       default:
-         if (isprint(inchar))
+         if (isprint_unicode(inchar))
            {
             EnvUngetcRouter(theEnv,inchar,logicalName);
             theToken->value = (void *) ScanSymbol(theEnv,logicalName,0,&type);
@@ -390,7 +390,7 @@ static void *ScanSymbol(
            (inchar != '(') && (inchar != ')') &&
            (inchar != '&') && (inchar != '|') && (inchar != '~') &&
            (inchar != ' ') && (inchar != ';') &&
-           isprint(inchar) )
+           isprint_unicode(inchar) )
      {
       ScannerData(theEnv)->GlobalString = ExpandStringWithChar(theEnv,inchar,ScannerData(theEnv)->GlobalString,&ScannerData(theEnv)->GlobalPos,&ScannerData(theEnv)->GlobalMax,ScannerData(theEnv)->GlobalMax+80);
 
@@ -552,7 +552,7 @@ static void ScanNumber(
                    (inchar == '(') || (inchar == ')') ||
                    (inchar == '&') || (inchar == '|') || (inchar == '~') ||
                    (inchar == ' ') || (inchar == ';') ||
-                   (isprint(inchar) == 0) )
+                   (isprint_unicode(inchar) == 0) )
            { phase = 5; }
          else
            {
@@ -587,7 +587,7 @@ static void ScanNumber(
                    (inchar == '(') || (inchar == ')') ||
                    (inchar == '&') || (inchar == '|') || (inchar == '~') ||
                    (inchar == ' ') || (inchar == ';') ||
-                   (isprint(inchar) == 0) )
+                   (isprint_unicode(inchar) == 0) )
            { phase = 5; }
          else
            {
@@ -614,7 +614,7 @@ static void ScanNumber(
                    (inchar == '(') || (inchar == ')') ||
                    (inchar == '&') || (inchar == '|') || (inchar == '~') ||
                    (inchar == ' ') || (inchar == ';') ||
-                   (isprint(inchar) == 0) )
+                   (isprint_unicode(inchar) == 0) )
            { phase = 5; }
          else
            {
@@ -641,7 +641,7 @@ static void ScanNumber(
                    (inchar == '(') || (inchar == ')') ||
                    (inchar == '&') || (inchar == '|') || (inchar == '~') ||
                    (inchar == ' ') || (inchar == ';') ||
-                   (isprint(inchar) == 0) )
+                   (isprint_unicode(inchar) == 0) )
            {
             digitFound = FALSE;
             phase = 5;
@@ -664,7 +664,7 @@ static void ScanNumber(
                    (inchar == '(') || (inchar == ')') ||
                    (inchar == '&') || (inchar == '|') || (inchar == '~') ||
                    (inchar == ' ') || (inchar == ';') ||
-                   (isprint(inchar) == 0) )
+                   (isprint_unicode(inchar) == 0) )
            {
             if ((ScannerData(theEnv)->GlobalString[count-1] == '+') || (ScannerData(theEnv)->GlobalString[count-1] == '-'))
               { digitFound = FALSE; }
