@@ -1,7 +1,7 @@
    /*******************************************************/
    /*      "C" Language Integrated Production System      */
    /*                                                     */
-   /*             CLIPS Version 6.20  01/31/02            */
+   /*             CLIPS Version 6.30  08/16/14            */
    /*                                                     */
    /*          DEFTEMPLATE UTILITIES HEADER FILE          */
    /*******************************************************/
@@ -15,6 +15,24 @@
 /* Contributing Programmer(s):                               */
 /*                                                           */
 /* Revision History:                                         */
+/*                                                           */
+/*      6.23: Added support for templates maintaining their  */
+/*            own list of facts.                             */
+/*                                                           */
+/*      6.24: Renamed BOOLEAN macro type to intBool.         */
+/*                                                           */
+/*            Added additional arguments to                  */
+/*            InvalidDeftemplateSlotMessage function.        */
+/*                                                           */
+/*            Added additional arguments to                  */
+/*            PrintTemplateFact function.                    */
+/*                                                           */
+/*      6.30: Support for long long integers.                */
+/*                                                           */
+/*            Used gensprintf instead of sprintf.            */
+/*                                                           */
+/*            Added const qualifiers to remove C++           */
+/*            deprecation warnings.                          */
 /*                                                           */
 /*************************************************************/
 
@@ -48,19 +66,19 @@
 #define LOCALE extern
 #endif
 
-   LOCALE void                           InvalidDeftemplateSlotMessage(void *,char *,char *);
-   LOCALE void                           SingleFieldSlotCardinalityError(void *,char *);
+   LOCALE void                           InvalidDeftemplateSlotMessage(void *,const char *,const char *,int);
+   LOCALE void                           SingleFieldSlotCardinalityError(void *,const char *);
    LOCALE void                           MultiIntoSingleFieldSlotError(void *,struct templateSlot *,struct deftemplate *);
    LOCALE void                           CheckTemplateFact(void *,struct fact *);
-   LOCALE BOOLEAN                        CheckRHSSlotTypes(void *,struct expr *,struct templateSlot *,char *);
+   LOCALE intBool                        CheckRHSSlotTypes(void *,struct expr *,struct templateSlot *,const char *);
    LOCALE struct templateSlot           *GetNthSlot(struct deftemplate *,int);
    LOCALE int                            FindSlotPosition(struct deftemplate *,struct symbolHashNode *);
-   LOCALE void                           PrintTemplateFact(void *,char *,struct fact *);
+   LOCALE void                           PrintTemplateFact(void *,const char *,struct fact *,int,int);
    LOCALE void                           UpdateDeftemplateScope(void *);
    LOCALE struct templateSlot           *FindSlot(struct deftemplate *,struct symbolHashNode *,short *);
    LOCALE struct deftemplate            *CreateImpliedDeftemplate(void *,SYMBOL_HN *,int);
 
-#endif
+#endif /* _H_tmpltutl */
 
 
 

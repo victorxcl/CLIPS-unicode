@@ -1,7 +1,7 @@
    /*******************************************************/
    /*      "C" Language Integrated Production System      */
    /*                                                     */
-   /*               CLIPS Version 6.20  01/31/02          */
+   /*               CLIPS Version 6.30  08/16/14          */
    /*                                                     */
    /*                                                     */
    /*******************************************************/
@@ -10,18 +10,43 @@
 /* Purpose:                                                  */
 /*                                                           */
 /* Principal Programmer(s):                                  */
-/*      Brian L. Donnell                                     */
+/*      Brian L. Dantes                                      */
 /*                                                           */
 /* Contributing Programmer(s):                               */
 /*                                                           */
 /* Revision History:                                         */
+/*                                                           */
+/*      6.23: Correction for FalseSymbol/TrueSymbol. DR0859  */
+/*                                                           */
+/*      6.24: Removed INCREMENTAL_RESET and                  */
+/*            LOGICAL_DEPENDENCIES compilation flags.        */
+/*                                                           */
+/*            Converted INSTANCE_PATTERN_MATCHING to         */
+/*            DEFRULE_CONSTRUCT.                             */
+/*                                                           */
+/*            Renamed BOOLEAN macro type to intBool.         */
+/*                                                           */
+/*      6.30: Modified the QueueObjectMatchAction function   */
+/*            so that instance retract actions always occur  */
+/*            before instance assert and modify actions.     */
+/*            This prevents the pattern matching process     */
+/*            from attempting the evaluation of a join       */
+/*            expression that accesses the slots of a        */
+/*            retracted instance.                            */
+/*                                                           */
+/*            Added support for hashed alpha memories.       */
+/*                                                           */
+/*            Support for long long integers.                */
+/*                                                           */
+/*            Added support for hashed comparisons to        */
+/*            constants.                                     */
 /*                                                           */
 /*************************************************************/
 
 #ifndef _H_objrtmch
 #define _H_objrtmch
 
-#if INSTANCE_PATTERN_MATCHING
+#if DEFRULE_CONSTRUCT && OBJECT_SYSTEM
 
 #define OBJECT_ASSERT  1
 #define OBJECT_RETRACT 2
@@ -71,10 +96,11 @@ typedef struct objectPatternNode
    unsigned blocked        : 1;
    unsigned multifieldNode : 1;
    unsigned endSlot        : 1;
+   unsigned selector       : 1;
    unsigned whichField     : 8;
-   unsigned leaveFields    : 8;
-   unsigned long matchTimeTag;
-   unsigned slotNameID;
+   unsigned short leaveFields;
+   unsigned long long matchTimeTag;
+   int slotNameID;
    EXPRESSION *networkTest;
    struct objectPatternNode *nextLevel;
    struct objectPatternNode *lastLevel;
@@ -87,7 +113,7 @@ typedef struct objectPatternNode
 struct objectAlphaNode
   {
    struct patternNodeHeader header;
-   unsigned long matchTimeTag;
+   unsigned long long matchTimeTag;
    BITMAP_HN *classbmp,*slotbmp;
    OBJECT_PATTERN_NODE *patternNode;
    struct objectAlphaNode *nxtInGroup,
@@ -114,17 +140,18 @@ typedef struct objectMatchAction
 #endif
 
    LOCALE void                  ObjectMatchDelay(void *,DATA_OBJECT *);
-   LOCALE BOOLEAN               SetDelayObjectPatternMatching(void *,int);
-   LOCALE BOOLEAN               GetDelayObjectPatternMatching(void *);
+   LOCALE intBool               SetDelayObjectPatternMatching(void *,int);
+   LOCALE intBool               GetDelayObjectPatternMatching(void *);
    LOCALE OBJECT_PATTERN_NODE  *ObjectNetworkPointer(void *);
    LOCALE OBJECT_ALPHA_NODE    *ObjectNetworkTerminalPointer(void *);
    LOCALE void                  SetObjectNetworkPointer(void *,OBJECT_PATTERN_NODE *);
    LOCALE void                  SetObjectNetworkTerminalPointer(void *,OBJECT_ALPHA_NODE *);
    LOCALE void                  ObjectNetworkAction(void *,int,INSTANCE_TYPE *,int);
+   LOCALE void                  ResetObjectMatchTimeTags(void *);
 
-#endif
+#endif /* DEFRULE_CONSTRUCT && OBJECT_SYSTEM */
 
-#endif
+#endif /* _H_objrtmch */
 
 
 

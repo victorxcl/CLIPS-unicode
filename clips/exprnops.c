@@ -1,7 +1,7 @@
    /*******************************************************/
    /*      "C" Language Integrated Production System      */
    /*                                                     */
-   /*             CLIPS Version 6.20  01/31/02            */
+   /*             CLIPS Version 6.30  08/16/14            */
    /*                                                     */
    /*             EXPRESSION OPERATIONS MODULE            */
    /*******************************************************/
@@ -14,9 +14,16 @@
 /*      Gary D. Riley                                        */
 /*                                                           */
 /* Contributing Programmer(s):                               */
-/*      Brian L. Donnell                                     */
+/*      Brian L. Dantes                                      */
 /*                                                           */
 /* Revision History:                                         */
+/*                                                           */
+/*      6.24: Renamed BOOLEAN macro type to intBool.         */
+/*                                                           */
+/*      6.30: Add NegateExpression function.                 */
+/*                                                           */
+/*            Added const qualifiers to remove C++           */
+/*            deprecation warnings.                          */
 /*                                                           */
 /*************************************************************/
 
@@ -129,7 +136,7 @@ globle int CheckArgumentAgainstRestriction(
 /* ConstantExpression: Returns TRUE if the expression */
 /*   is a constant, otherwise FALSE.                  */
 /************************************************************/
-globle BOOLEAN ConstantExpression(
+globle intBool ConstantExpression(
   struct expr *testPtr)
   {
    while (testPtr != NULL)
@@ -150,7 +157,7 @@ globle BOOLEAN ConstantExpression(
 /* ConstantType: Returns TRUE if the type */
 /*   is a constant, otherwise FALSE.      */
 /************************************************/
-globle BOOLEAN ConstantType(
+globle intBool ConstantType(
   int theType)
   {
    switch (theType)
@@ -173,7 +180,7 @@ globle BOOLEAN ConstantType(
 /* IdenticalExpression: Determines if two expressions are identical. Returns */
 /*   TRUE if the expressions are identical, otherwise FALSE is returned.     */
 /*****************************************************************************/
-globle BOOLEAN IdenticalExpression(
+globle intBool IdenticalExpression(
   struct expr *firstList,
   struct expr *secondList)
   {
@@ -273,9 +280,9 @@ globle struct expr *CopyExpression(
 /*   contains any variables. Returns TRUE if the expression */
 /*   contains any variables, otherwise FALSE is returned.   */
 /************************************************************/
-globle BOOLEAN ExpressionContainsVariables(
+globle intBool ExpressionContainsVariables(
   struct expr *theExpression,
-  BOOLEAN globalsAreVariables)
+  intBool globalsAreVariables)
   {
    while (theExpression != NULL)
      {
@@ -343,7 +350,7 @@ globle struct expr *GenConstant(
 /*************************************************/
 globle void PrintExpression(
   void *theEnv,
-  char *fileid,
+  const char *fileid,
   struct expr *theExpression)
   {
    struct expr *oldExpression;
@@ -497,6 +504,43 @@ globle struct expr *CombineExpressions(
    tempPtr = GenConstant(theEnv,FCALL,ExpressionData(theEnv)->PTR_AND);
    tempPtr->argList = expr1;
    expr1->nextArg = expr2;
+   return(tempPtr);
+  }
+
+/*********************/
+/* NegateExpression: */
+/*********************/
+globle struct expr *NegateExpression(
+  void *theEnv,
+  struct expr *theExpression)
+  {
+   struct expr *tempPtr;
+
+   /*=========================================*/
+   /* If the expression is NULL, return NULL. */
+   /*=========================================*/
+
+   if (theExpression == NULL) return(NULL);
+
+   /*==================================================*/
+   /* The expression is already wrapped within a "not" */
+   /* function call, just remove the function call.    */
+   /*==================================================*/
+
+   if (theExpression->value == ExpressionData(theEnv)->PTR_NOT)
+     {
+      tempPtr = theExpression->argList;
+      rtn_struct(theEnv,expr,theExpression);
+      return(tempPtr);
+     }
+
+   /*===================================================*/
+   /* Wrap the expression within a "not" function call. */
+   /*===================================================*/
+
+   tempPtr = GenConstant(theEnv,FCALL,ExpressionData(theEnv)->PTR_NOT);
+   tempPtr->argList = theExpression;
+
    return(tempPtr);
   }
 

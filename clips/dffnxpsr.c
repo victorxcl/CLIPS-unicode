@@ -1,7 +1,7 @@
    /*******************************************************/
    /*      "C" Language Integrated Production System      */
    /*                                                     */
-   /*               CLIPS Version 6.22  06/15/04          */
+   /*               CLIPS Version 6.30  01/25/15          */
    /*                                                     */
    /*                                                     */
    /*******************************************************/
@@ -10,11 +10,38 @@
 /* Purpose: Deffunction Parsing Routines                     */
 /*                                                           */
 /* Principal Programmer(s):                                  */
-/*      Brian L. Donnell                                     */
+/*      Brian L. Dantes                                      */
 /*                                                           */
 /* Contributing Programmer(s):                               */
 /*                                                           */
 /* Revision History:                                         */
+/*                                                           */
+/*      6.24: Renamed BOOLEAN macro type to intBool.         */
+/*                                                           */
+/*            If the last construct in a loaded file is a    */
+/*            deffunction or defmethod with no closing right */
+/*            parenthesis, an error should be issued, but is */
+/*            not. DR0872                                    */
+/*                                                           */
+/*            Added pragmas to prevent unused variable       */
+/*            warnings.                                      */
+/*                                                           */
+/*      6.30: Removed conditional code for unsupported       */
+/*            compilers/operating systems (IBM_MCW,          */
+/*            MAC_MCW, and IBM_TBC).                         */
+/*                                                           */
+/*            ENVIRONMENT_API_ONLY no longer supported.      */
+/*                                                           */
+/*            GetConstructNameAndComment API change.         */
+/*                                                           */
+/*            Added const qualifiers to remove C++           */
+/*            deprecation warnings.                          */
+/*                                                           */
+/*            Converted API macros to function calls.        */
+/*                                                           */
+/*            Changed find construct functionality so that   */
+/*            imported modules are search when locating a    */
+/*            named construct.                               */
 /*                                                           */
 /*************************************************************/
 
@@ -62,7 +89,7 @@
    =========================================
    ***************************************** */
 
-static BOOLEAN ValidDeffunctionName(void *,char *);
+static intBool ValidDeffunctionName(void *,const char *);
 static DEFFUNCTION *AddDeffunction(void *,SYMBOL_HN *,EXPRESSION *,int,int,int,int);
 
 /* =========================================
@@ -82,9 +109,9 @@ static DEFFUNCTION *AddDeffunction(void *,SYMBOL_HN *,EXPRESSION *,int,int,int,i
                     (<single-field-varible>* [<multifield-variable>])
                     <action>*)
  ***************************************************************************/
-globle BOOLEAN ParseDeffunction(
+globle intBool ParseDeffunction(
   void *theEnv,
-  char *readSource)
+  const char *readSource)
   {
    SYMBOL_HN *deffunctionName;
    EXPRESSION *actions;
@@ -112,8 +139,8 @@ globle BOOLEAN ParseDeffunction(
       Parse the name and comment fields of the deffunction.
       ===================================================== */
    deffunctionName = GetConstructNameAndComment(theEnv,readSource,&DeffunctionData(theEnv)->DFInputToken,"deffunction",
-                                                EnvFindDeffunction,NULL,
-                                                "!",TRUE,TRUE,TRUE);
+                                                EnvFindDeffunctionInModule,NULL,
+                                                "!",TRUE,TRUE,TRUE,FALSE);
    if (deffunctionName == NULL)
      return(TRUE);
 
@@ -134,7 +161,7 @@ globle BOOLEAN ParseDeffunction(
 
    if (ConstructData(theEnv)->CheckSyntaxMode)
      {
-      dptr = (DEFFUNCTION *) EnvFindDeffunction(theEnv,ValueToString(deffunctionName));
+      dptr = (DEFFUNCTION *) EnvFindDeffunctionInModule(theEnv,ValueToString(deffunctionName));
       if (dptr == NULL)
         { dptr = AddDeffunction(theEnv,deffunctionName,NULL,min,max,0,TRUE); }
       else
@@ -165,6 +192,34 @@ globle BOOLEAN ParseDeffunction(
    actions = ParseProcActions(theEnv,"deffunction",readSource,
                               &DeffunctionData(theEnv)->DFInputToken,parameterList,wildcard,
                               NULL,NULL,&lvars,NULL);
+
+   /*=============================================================*/
+   /* Check for the closing right parenthesis of the deffunction. */
+   /*=============================================================*/
+
+   if ((DeffunctionData(theEnv)->DFInputToken.type != RPAREN) && /* DR0872 */
+       (actions != NULL))
+     {
+      SyntaxErrorMessage(theEnv,"deffunction");
+      
+      ReturnExpression(theEnv,parameterList);
+      ReturnPackedExpression(theEnv,actions);
+
+      if (overwrite)
+        {
+         dptr->minNumberOfParameters = owMin;
+         dptr->maxNumberOfParameters = owMax;
+        }
+
+      if ((dptr->busy == 0) && (! overwrite))
+        {
+         RemoveConstructFromModule(theEnv,(struct constructHeader *) dptr);
+         RemoveDeffunction(theEnv,dptr);
+        }
+
+      return(TRUE);
+     }
+
    if (actions == NULL)
      {
       ReturnExpression(theEnv,parameterList);
@@ -242,9 +297,9 @@ globle BOOLEAN ParseDeffunction(
                  name does not conflict with one from
                  another module
  ************************************************************/
-static BOOLEAN ValidDeffunctionName(
+static intBool ValidDeffunctionName(
   void *theEnv,
-  char *theDeffunctionName)
+  const char *theDeffunctionName)
   {
    struct constructHeader *theDeffunction;
 #if DEFGENERIC_CONSTRUCT
@@ -305,7 +360,7 @@ static BOOLEAN ValidDeffunctionName(
      }
 #endif
 
-   theDeffunction = (struct constructHeader *) EnvFindDeffunction(theEnv,theDeffunctionName);
+   theDeffunction = (struct constructHeader *) EnvFindDeffunctionInModule(theEnv,theDeffunctionName);
    if (theDeffunction != NULL)
      {
       /* ===========================================
@@ -356,6 +411,10 @@ static DEFFUNCTION *AddDeffunction(
    unsigned oldbusy;
 #if DEBUGGING_FUNCTIONS
    unsigned DFHadWatch = FALSE;
+#else
+#if MAC_XCD
+#pragma unused(headerp)
+#endif
 #endif
 
    /*===============================================================*/
@@ -364,7 +423,7 @@ static DEFFUNCTION *AddDeffunction(
    /* use the existing structure and remove the pretty print form   */
    /* and interpretive code.                                        */
    /*===============================================================*/
-   dfuncPtr = (DEFFUNCTION *) EnvFindDeffunction(theEnv,ValueToString(name));
+   dfuncPtr = (DEFFUNCTION *) EnvFindDeffunctionInModule(theEnv,ValueToString(name));
    if (dfuncPtr == NULL)
      {
       dfuncPtr = get_struct(theEnv,deffunctionStruct);
@@ -390,7 +449,7 @@ static DEFFUNCTION *AddDeffunction(
       dfuncPtr->busy = oldbusy;
       ReturnPackedExpression(theEnv,dfuncPtr->code);
       dfuncPtr->code = NULL;
-      SetDeffunctionPPForm((void *) dfuncPtr,NULL);
+      EnvSetDeffunctionPPForm(theEnv,(void *) dfuncPtr,NULL);
 
       /* =======================================
          Remove the deffunction from the list so
@@ -425,7 +484,7 @@ static DEFFUNCTION *AddDeffunction(
 #if DEBUGGING_FUNCTIONS
    EnvSetDeffunctionWatch(theEnv,DFHadWatch ? TRUE : DeffunctionData(theEnv)->WatchDeffunctions,(void *) dfuncPtr);
    if ((EnvGetConserveMemory(theEnv) == FALSE) && (headerp == FALSE))
-     SetDeffunctionPPForm((void *) dfuncPtr,CopyPPBuffer(theEnv));
+     EnvSetDeffunctionPPForm(theEnv,(void *) dfuncPtr,CopyPPBuffer(theEnv));
 #endif
    return(dfuncPtr);
   }

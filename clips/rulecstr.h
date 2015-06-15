@@ -1,7 +1,7 @@
    /*******************************************************/
    /*      "C" Language Integrated Production System      */
    /*                                                     */
-   /*             CLIPS Version 6.20  01/31/02            */
+   /*             CLIPS Version 6.30  08/16/14            */
    /*                                                     */
    /*             RULE CONSTRAINTS HEADER FILE            */
    /*******************************************************/
@@ -16,6 +16,10 @@
 /* Contributing Programmer(s):                               */
 /*                                                           */
 /* Revision History:                                         */
+/*                                                           */
+/*      6.24: Renamed BOOLEAN macro type to intBool.         */
+/*                                                           */
+/*      6.30: Support for long long integers.                */
 /*                                                           */
 /*************************************************************/
 
@@ -34,14 +38,14 @@
 
    LOCALE struct lhsParseNode           *GetExpressionVarConstraints(void *,struct lhsParseNode *);
    LOCALE struct lhsParseNode           *DeriveVariableConstraints(void *,struct lhsParseNode *);
-   LOCALE BOOLEAN                        ProcessConnectedConstraints(void *,struct lhsParseNode *,struct lhsParseNode *,struct lhsParseNode *);
+   LOCALE intBool                        ProcessConnectedConstraints(void *,struct lhsParseNode *,struct lhsParseNode *,struct lhsParseNode *);
    LOCALE void                           ConstraintReferenceErrorMessage(void *,
                                                                 struct symbolHashNode *,
                                                                 struct lhsParseNode *,
                                                                 int,int,
                                                                 struct symbolHashNode *,
                                                                 int);
-   LOCALE BOOLEAN                        CheckRHSForConstraintErrors(void *,struct expr *,struct lhsParseNode *);
+   LOCALE intBool                        CheckRHSForConstraintErrors(void *,struct expr *,struct lhsParseNode *);
 
-#endif
+#endif /* _H_rulecstr */
 

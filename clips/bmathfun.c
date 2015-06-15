@@ -1,7 +1,7 @@
    /*******************************************************/
    /*      "C" Language Integrated Production System      */
    /*                                                     */
-   /*             CLIPS Version 6.20  01/31/02            */
+   /*             CLIPS Version 6.30  08/16/14            */
    /*                                                     */
    /*             BASIC MATH FUNCTIONS MODULE             */
    /*******************************************************/
@@ -18,6 +18,13 @@
 /* Contributing Programmer(s):                               */
 /*                                                           */
 /* Revision History:                                         */
+/*      6.23: Correction for FalseSymbol/TrueSymbol. DR0859  */
+/*                                                           */
+/*      6.24: Renamed BOOLEAN macro type to intBool.         */
+/*                                                           */
+/*      6.30: Support for long long integers.                */
+/*                                                           */
+/*            Converted API macros to function calls.        */
 /*                                                           */
 /*************************************************************/
 
@@ -39,7 +46,7 @@
 
 struct basicMathFunctionData
   { 
-   BOOLEAN AutoFloatDividend;
+   intBool AutoFloatDividend;
   };
 
 #define BasicMathFunctionData(theEnv) ((struct basicMathFunctionData *) GetEnvironmentData(theEnv,BMATHFUN_DATA))
@@ -60,13 +67,13 @@ globle void BasicMathFunctionDefinitions(
    EnvDefineFunction2(theEnv,"-", 'n', PTIEF SubtractionFunction, "SubtractionFunction", "2*n");
     
    EnvDefineFunction2(theEnv,"/", 'n', PTIEF DivisionFunction, "DivisionFunction", "2*n");
-   EnvDefineFunction2(theEnv,"div", 'l', PTIEF DivFunction, "DivFunction", "2*n");
+   EnvDefineFunction2(theEnv,"div", 'g', PTIEF DivFunction, "DivFunction", "2*n");
    EnvDefineFunction2(theEnv,"set-auto-float-dividend", 'b',
                    SetAutoFloatDividendCommand, "SetAutoFloatDividendCommand", "11");
    EnvDefineFunction2(theEnv,"get-auto-float-dividend", 'b',
                   GetAutoFloatDividendCommand, "GetAutoFloatDividendCommand", "00");
 
-   EnvDefineFunction2(theEnv,"integer", 'l', PTIEF IntegerFunction, "IntegerFunction", "11n");
+   EnvDefineFunction2(theEnv,"integer", 'g', PTIEF IntegerFunction, "IntegerFunction", "11n");
    EnvDefineFunction2(theEnv,"float", 'd', PTIEF FloatFunction, "FloatFunction", "11n");
    EnvDefineFunction2(theEnv,"abs", 'n', PTIEF AbsFunction, "AbsFunction", "11n");
    EnvDefineFunction2(theEnv,"min", 'n', PTIEF MinFunction, "MinFunction", "2*n");
@@ -83,8 +90,8 @@ globle void AdditionFunction(
   DATA_OBJECT_PTR returnValue)
   {
    double ftotal = 0.0;
-   long ltotal = 0L;
-   BOOLEAN useFloatTotal = FALSE;
+   long long ltotal = 0LL;
+   intBool useFloatTotal = FALSE;
    EXPRESSION *theExpression;
    DATA_OBJECT theArgument;
    int pos = 1;
@@ -145,8 +152,8 @@ globle void MultiplicationFunction(
   DATA_OBJECT_PTR returnValue)
   {
    double ftotal = 1.0;
-   long ltotal = 1L;
-   BOOLEAN useFloatTotal = FALSE;
+   long long ltotal = 1LL;
+   intBool useFloatTotal = FALSE;
    EXPRESSION *theExpression;
    DATA_OBJECT theArgument;
    int pos = 1;
@@ -206,8 +213,8 @@ globle void SubtractionFunction(
   DATA_OBJECT_PTR returnValue)
   {
    double ftotal = 0.0;
-   long ltotal = 0L;
-   BOOLEAN useFloatTotal = FALSE;
+   long long ltotal = 0LL;
+   intBool useFloatTotal = FALSE;
    EXPRESSION *theExpression;
    DATA_OBJECT theArgument;
    int pos = 1;
@@ -287,8 +294,8 @@ globle void DivisionFunction(
   DATA_OBJECT_PTR returnValue)
   {
    double ftotal = 1.0;
-   long ltotal = 1L;
-   BOOLEAN useFloatTotal;
+   long long ltotal = 1LL;
+   intBool useFloatTotal;
    EXPRESSION *theExpression;
    DATA_OBJECT theArgument;
    int pos = 1;
@@ -379,14 +386,14 @@ globle void DivisionFunction(
 /* DivFunction: H/L access routine   */
 /*   for the div function.           */
 /*************************************/
-globle long DivFunction(
+globle long long DivFunction(
   void *theEnv)
   {
-   long total = 1L;
+   long long total = 1LL;
    EXPRESSION *theExpression;
    DATA_OBJECT theArgument;
    int pos = 1;
-   long theNumber;
+   long long theNumber;
 
    /*===================================================*/
    /* Get the first argument. This number which will be */
@@ -403,7 +410,7 @@ globle long DivFunction(
       if (theArgument.type == INTEGER)
         { total = ValueToLong(theArgument.value); }
       else
-        { total = (long) ValueToDouble(theArgument.value); }
+        { total = (long long) ValueToDouble(theArgument.value); }
       pos++;
      }
 
@@ -420,10 +427,10 @@ globle long DivFunction(
       else theExpression = GetNextArgument(theExpression);
 
       if (theArgument.type == INTEGER) theNumber = ValueToLong(theArgument.value);
-      else if (theArgument.type == FLOAT) theNumber = (long) ValueToDouble(theArgument.value);
+      else if (theArgument.type == FLOAT) theNumber = (long long) ValueToDouble(theArgument.value);
       else theNumber = 1;
 
-      if (theNumber == 0L)
+      if (theNumber == 0LL)
         {
          DivideByZeroErrorMessage(theEnv,"div");
          SetHaltExecution(theEnv,TRUE);
@@ -434,7 +441,7 @@ globle long DivFunction(
       if (theArgument.type == INTEGER)
         { total /= ValueToLong(theArgument.value); }
       else
-        { total = total / (long) ValueToDouble(theArgument.value); }
+        { total = total / (long long) ValueToDouble(theArgument.value); }
 
       pos++;
      }
@@ -475,7 +482,7 @@ globle int SetAutoFloatDividendCommand(
    /* The symbol FALSE disables the auto float dividend feature. */
    /*============================================================*/
 
-   if ((theArgument.value == SymbolData(theEnv)->FalseSymbol) && (theArgument.type == SYMBOL))
+   if ((theArgument.value == EnvFalseSymbol(theEnv)) && (theArgument.type == SYMBOL))
      { BasicMathFunctionData(theEnv)->AutoFloatDividend = FALSE; }
    else
      { BasicMathFunctionData(theEnv)->AutoFloatDividend = TRUE; }
@@ -511,7 +518,7 @@ globle int GetAutoFloatDividendCommand(
 /* EnvGetAutoFloatDividend: C access routine for */
 /*   the get-auto-float-dividend command.        */
 /*************************************************/
-globle BOOLEAN EnvGetAutoFloatDividend(
+globle intBool EnvGetAutoFloatDividend(
   void *theEnv)
   {
    return(BasicMathFunctionData(theEnv)->AutoFloatDividend);
@@ -521,7 +528,7 @@ globle BOOLEAN EnvGetAutoFloatDividend(
 /* EnvSetAutoFloatDividend: C access routine for */
 /*   the set-auto-float-dividend command.        */
 /*************************************************/
-globle BOOLEAN EnvSetAutoFloatDividend(
+globle intBool EnvSetAutoFloatDividend(
   void *theEnv,
   int value)
   {
@@ -536,7 +543,7 @@ globle BOOLEAN EnvSetAutoFloatDividend(
 /* IntegerFunction: H/L access routine   */
 /*   for the integer function.           */
 /*****************************************/
-globle long int IntegerFunction(
+globle long long IntegerFunction(
   void *theEnv)
   {
    DATA_OBJECT valstruct;
@@ -545,7 +552,7 @@ globle long int IntegerFunction(
    /* Check for the correct number of arguments. */
    /*============================================*/
 
-   if (EnvArgCountCheck(theEnv,"integer",EXACTLY,1) == -1) return(0L);
+   if (EnvArgCountCheck(theEnv,"integer",EXACTLY,1) == -1) return(0LL);
 
    /*================================================================*/
    /* Check for the correct type of argument. Note that ArgTypeCheck */
@@ -553,7 +560,7 @@ globle long int IntegerFunction(
    /* (which is the purpose of the integer function).                */
    /*================================================================*/
 
-   if (EnvArgTypeCheck(theEnv,"integer",1,INTEGER,&valstruct) == FALSE) return(0L);
+   if (EnvArgTypeCheck(theEnv,"integer",1,INTEGER,&valstruct) == FALSE) return(0LL);
 
    /*===================================================*/
    /* Return the numeric value converted to an integer. */
@@ -813,3 +820,17 @@ globle void MaxFunction(
    return;
   }
 
+#if ALLOW_ENVIRONMENT_GLOBALS
+
+globle intBool GetAutoFloatDividend()
+  {
+   return EnvGetAutoFloatDividend(GetCurrentEnvironment());
+  }
+
+globle intBool SetAutoFloatDividend(
+  int value)
+  {
+   return EnvSetAutoFloatDividend(GetCurrentEnvironment(),value);
+  }
+
+#endif

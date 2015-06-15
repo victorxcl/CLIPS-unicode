@@ -1,7 +1,7 @@
    /*******************************************************/
    /*      "C" Language Integrated Production System      */
    /*                                                     */
-   /*             CLIPS Version 6.22  06/15/04            */
+   /*             CLIPS Version 6.30  01/25/15            */
    /*                                                     */
    /*              DEFFACTS DEFINITION MODULE             */
    /*******************************************************/
@@ -15,9 +15,27 @@
 /*      Gary D. Riley                                        */
 /*                                                           */
 /* Contributing Programmer(s):                               */
-/*      Brian L. Donnell                                     */
+/*      Brian L. Dantes                                      */
 /*                                                           */
 /* Revision History:                                         */
+/*                                                           */
+/*      6.24: Renamed BOOLEAN macro type to intBool.         */
+/*                                                           */
+/*            Corrected code to remove run-time program      */
+/*            compiler warning.                              */
+/*                                                           */
+/*      6.30: Removed conditional code for unsupported       */
+/*            compilers/operating systems (IBM_MCW,          */
+/*            MAC_MCW, and IBM_TBC).                         */
+/*                                                           */
+/*            Added const qualifiers to remove C++           */
+/*            deprecation warnings.                          */
+/*                                                           */
+/*            Converted API macros to function calls.        */
+/*                                                           */
+/*            Changed find construct functionality so that   */
+/*            imported modules are search when locating a    */
+/*            named construct.                               */
 /*                                                           */
 /*************************************************************/
 
@@ -55,7 +73,9 @@
    static void                    ReturnDeffacts(void *,void *);
    static void                    InitializeDeffactsModules(void *);
    static void                    DeallocateDeffactsData(void *);
+#if ! RUN_TIME
    static void                    DestroyDeffactsAction(void *,struct constructHeader *,void *);
+#endif
 
 /***********************************************************/
 /* InitializeDeffacts: Initializes the deffacts construct. */
@@ -103,25 +123,23 @@ static void DeallocateDeffactsData(
       rtn_struct(theEnv,deffactsModule,theModuleItem);
      }
 #else
-#if MAC_MCW || IBM_MCW
+#if MAC_XCD
 #pragma unused(theEnv)
 #endif
 #endif
   }
   
+#if ! RUN_TIME
 /*********************************************************/
 /* DestroyDeffactsAction: Action used to remove deffacts */
 /*   as a result of DestroyEnvironment.                  */
 /*********************************************************/
-#if IBM_TBC
-#pragma argsused
-#endif
 static void DestroyDeffactsAction(
   void *theEnv,
   struct constructHeader *theConstruct,
   void *buffer)
   {
-#if MAC_MCW || IBM_MCW
+#if MAC_XCD
 #pragma unused(buffer)
 #endif
 #if (! BLOAD_ONLY) && (! RUN_TIME)
@@ -135,12 +153,12 @@ static void DestroyDeffactsAction(
 
    rtn_struct(theEnv,deffacts,theDeffacts);
 #else
-#if MAC_MCW || IBM_MCW
+#if MAC_XCD
 #pragma unused(theEnv,theConstruct)
 #endif
 #endif
   }
-
+#endif
 
 /*******************************************************/
 /* InitializeDeffactsModules: Initializes the deffacts */
@@ -163,7 +181,7 @@ static void InitializeDeffactsModules(
 #else
                          NULL,
 #endif
-                         EnvFindDeffacts);
+                         EnvFindDeffactsInModule);
   }
 
 /************************************************/
@@ -204,9 +222,21 @@ globle struct deffactsModule *GetDeffactsModuleItem(
 /**************************************************/
 globle void *EnvFindDeffacts(
   void *theEnv,
-  char *deffactsName)
+  const char *deffactsName)
   { 
-   return(FindNamedConstruct(theEnv,deffactsName,DeffactsData(theEnv)->DeffactsConstruct)); 
+   return(FindNamedConstructInModuleOrImports(theEnv,deffactsName,DeffactsData(theEnv)->DeffactsConstruct)); 
+  }
+
+/**************************************************/
+/* EnvFindDeffactsInModule: Searches for a deffact in the */
+/*   list of deffacts. Returns a pointer to the   */
+/*   deffact if found, otherwise NULL.            */
+/**************************************************/
+globle void *EnvFindDeffactsInModule(
+  void *theEnv,
+  const char *deffactsName)
+  { 
+   return(FindNamedConstructInModule(theEnv,deffactsName,DeffactsData(theEnv)->DeffactsConstruct));
   }
 
 /*********************************************************/
@@ -226,29 +256,19 @@ globle void *EnvGetNextDeffacts(
 /* EnvIsDeffactsDeletable: Returns TRUE if a particular */
 /*   deffacts can be deleted, otherwise returns FALSE.  */
 /********************************************************/
-#if IBM_TBC
-#pragma argsused
-#endif
-globle BOOLEAN EnvIsDeffactsDeletable(
+globle intBool EnvIsDeffactsDeletable(
   void *theEnv,
   void *ptr)
   {
-#if MAC_MCW || IBM_MCW
+#if MAC_XCD
 #pragma unused(ptr)
 #endif
+   if (! ConstructsDeletable(theEnv))
+     { return FALSE; }
 
-#if BLOAD_ONLY || RUN_TIME
-#if MAC_MCW || IBM_MCW
-#pragma unused(theEnv)
-#endif
-   return(FALSE);
-#else
-#if BLOAD || BLOAD_AND_BSAVE
-   if (Bloaded(theEnv)) return(FALSE);
-#endif
    if (ConstructData(theEnv)->ResetInProgress) return(FALSE);
+
    return(TRUE);
-#endif
   }
 
 /***********************************************************/
@@ -259,10 +279,6 @@ static void ReturnDeffacts(
   void *theEnv,
   void *vTheDeffacts)
   {
-#if (MAC_MCW || IBM_MCW) && (RUN_TIME || BLOAD_ONLY)
-#pragma unused(theEnv,vTheDeffacts)
-#endif
-
 #if (! BLOAD_ONLY) && (! RUN_TIME)
    struct deffacts *theDeffacts = (struct deffacts *) vTheDeffacts;
 
@@ -276,7 +292,76 @@ static void ReturnDeffacts(
    rtn_struct(theEnv,deffacts,theDeffacts);
 #endif
   }
-  
+
+/*##################################*/
+/* Additional Environment Functions */
+/*##################################*/
+
+globle const char *EnvDeffactsModule(
+  void *theEnv,
+  void *theDeffacts)
+  {
+   return GetConstructModuleName((struct constructHeader *) theDeffacts);
+  }
+
+globle const char *EnvGetDeffactsName(
+  void *theEnv,
+  void *theDeffacts)
+  {
+   return GetConstructNameString((struct constructHeader *) theDeffacts);
+  }
+
+globle const char *EnvGetDeffactsPPForm(
+  void *theEnv,
+  void *theDeffacts)
+  {
+   return GetConstructPPForm(theEnv,(struct constructHeader *) theDeffacts);
+  }
+
+/*#####################################*/
+/* ALLOW_ENVIRONMENT_GLOBALS Functions */
+/*#####################################*/
+
+#if ALLOW_ENVIRONMENT_GLOBALS
+
+globle void *FindDeffacts(
+  const char *deffactsName)
+  {
+   return EnvFindDeffacts(GetCurrentEnvironment(),deffactsName);
+  }
+
+globle void *GetNextDeffacts(
+  void *deffactsPtr)
+  {
+   return EnvGetNextDeffacts(GetCurrentEnvironment(),deffactsPtr);
+  }
+
+globle intBool IsDeffactsDeletable(
+  void *ptr)
+  {
+   return EnvIsDeffactsDeletable(GetCurrentEnvironment(),ptr);
+  }
+
+globle const char *DeffactsModule(
+  void *theDeffacts)
+  {
+   return EnvDeffactsModule(GetCurrentEnvironment(),theDeffacts);
+  }
+
+globle const char *GetDeffactsName(
+  void *theDeffacts)
+  {
+   return EnvGetDeffactsName(GetCurrentEnvironment(),theDeffacts);
+  }
+
+globle const char *GetDeffactsPPForm(
+  void *theDeffacts)
+  {
+   return EnvGetDeffactsPPForm(GetCurrentEnvironment(),theDeffacts);
+  }
+
+#endif
+
 #endif /* DEFFACTS_CONSTRUCT */
 
 

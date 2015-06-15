@@ -1,7 +1,7 @@
    /*******************************************************/
    /*      "C" Language Integrated Production System      */
    /*                                                     */
-   /*               CLIPS Version 6.21  04/15/03          */
+   /*               CLIPS Version 6.30  08/16/14          */
    /*                                                     */
    /*                     MAIN MODULE                     */
    /*******************************************************/
@@ -15,6 +15,9 @@
 /* Contributing Programmer(s):                               */
 /*                                                           */
 /* Revision History:                                         */
+/*                                                           */
+/*      6.24: Moved UserFunctions and EnvUserFunctions to    */
+/*            the new userfunctions.c file.                  */
 /*                                                           */
 /*************************************************************/
 
@@ -38,16 +41,7 @@
 /*                                                                         */
 /***************************************************************************/
 
-#include <stdio.h>
-#include "setup.h"
-#include "sysdep.h"
-#include "envrnmnt.h"
-#include "extnfunc.h"
-#include "commline.h"
-
-int main(int,char *[]);
-void UserFunctions(void);
-void EnvUserFunctions(void *);
+#include "clips.h"
 
 /****************************************/
 /* main: Starts execution of the expert */
@@ -84,31 +78,3 @@ int main(
    
    return(-1);
   }
-  
-/*********************************************************/
-/* UserFunctions: Informs the expert system environment  */
-/*   of any user defined functions. In the default case, */
-/*   there are no user defined functions. To define      */
-/*   functions, either this function must be replaced by */
-/*   a function with the same name within this file, or  */
-/*   this function can be deleted from this file and     */
-/*   included in another file.                           */
-/*********************************************************/
-void UserFunctions()
-  {   
-  }
-  
-/***********************************************************/
-/* EnvUserFunctions: Informs the expert system environment */
-/*   of any user defined functions. In the default case,   */
-/*   there are no user defined functions. To define        */
-/*   functions, either this function must be replaced by   */
-/*   a function with the same name within this file, or    */
-/*   this function can be deleted from this file and       */
-/*   included in another file.                             */
-/***********************************************************/
-void EnvUserFunctions(
-  void *theEnv)
-  {
-  }
-

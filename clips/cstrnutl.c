@@ -1,7 +1,7 @@
    /*******************************************************/
    /*      "C" Language Integrated Production System      */
    /*                                                     */
-   /*             CLIPS Version 6.20  01/31/02            */
+   /*             CLIPS Version 6.30  08/16/14            */
    /*                                                     */
    /*             CONSTRAINT UTILITY MODULE               */
    /*******************************************************/
@@ -14,9 +14,13 @@
 /*      Gary D. Riley                                        */
 /*                                                           */
 /* Contributing Programmer(s):                               */
-/*      Brian Donnell                                        */
+/*      Brian Dantes                                         */
 /*                                                           */
 /* Revision History:                                         */
+/*                                                           */
+/*      6.24: Added allowed-classes slot facet.              */
+/*                                                           */
+/*      6.30: Support for long long integers.                */
 /*                                                           */
 /*************************************************************/
 
@@ -64,7 +68,9 @@ globle struct constraintRecord *GetConstraintRecord(
    constraints->stringRestriction = FALSE;
    constraints->floatRestriction = FALSE;
    constraints->integerRestriction = FALSE;
+   constraints->classRestriction = FALSE;
    constraints->instanceNameRestriction = FALSE;
+   constraints->classList = NULL;
    constraints->restrictionList = NULL;
    constraints->minValue = GenConstant(theEnv,SYMBOL,SymbolData(theEnv)->NegativeInfinity);
    constraints->maxValue = GenConstant(theEnv,SYMBOL,SymbolData(theEnv)->PositiveInfinity);
@@ -144,7 +150,9 @@ globle struct constraintRecord *CopyConstraintRecord(
    theConstraint->stringRestriction = sourceConstraint->stringRestriction;
    theConstraint->floatRestriction = sourceConstraint->floatRestriction;
    theConstraint->integerRestriction = sourceConstraint->integerRestriction;
+   theConstraint->classRestriction = sourceConstraint->classRestriction;
    theConstraint->instanceNameRestriction = sourceConstraint->instanceNameRestriction;
+   theConstraint->classList = CopyExpression(theEnv,sourceConstraint->classList);
    theConstraint->restrictionList = CopyExpression(theEnv,sourceConstraint->restrictionList);
    theConstraint->minValue = CopyExpression(theEnv,sourceConstraint->minValue);
    theConstraint->maxValue = CopyExpression(theEnv,sourceConstraint->maxValue);
@@ -498,6 +506,7 @@ globle CONSTRAINT_RECORD *FunctionCallToConstraintRecord(
         break;
 
       case 'i':
+      case 'g':
       case 'l':
         rv->integersAllowed = TRUE;
         break;
@@ -544,6 +553,10 @@ globle CONSTRAINT_RECORD *FunctionCallToConstraintRecord(
 
       case 'x':
         rv->instanceAddressesAllowed = TRUE;
+        break;
+
+      case 'y':
+        rv->factAddressesAllowed = TRUE;
         break;
 
       case 'v':

@@ -1,7 +1,7 @@
    /*******************************************************/
    /*      "C" Language Integrated Production System      */
    /*                                                     */
-   /*             CLIPS Version 6.20  01/31/02            */
+   /*             CLIPS Version 6.30  08/22/14            */
    /*                                                     */
    /*             CONSTRAINT CHECKING MODULE              */
    /*******************************************************/
@@ -14,9 +14,30 @@
 /*      Gary D. Riley                                        */
 /*                                                           */
 /* Contributing Programmer(s):                               */
-/*      Brian Donnell                                        */
+/*      Brian Dantes                                         */
 /*                                                           */
 /* Revision History:                                         */
+/*                                                           */
+/*      6.23: Changed name of variable exp to theExp         */
+/*            because of Unix compiler warnings of shadowed  */
+/*            definitions.                                   */
+/*                                                           */
+/*      6.24: Added allowed-classes slot facet.              */
+/*                                                           */
+/*            Renamed BOOLEAN macro type to intBool.         */
+/*                                                           */
+/*      6.30: Removed conditional code for unsupported       */
+/*            compilers/operating systems (IBM_MCW and       */
+/*            MAC_MCW).                                      */
+/*                                                           */
+/*            Support for long long integers.                */
+/*                                                           */
+/*            Added const qualifiers to remove C++           */
+/*            deprecation warnings.                          */
+/*                                                           */
+/*            Dynamic constraint checking for the            */
+/*            allowed-classes constraint now searches        */
+/*            imported modules.                              */
 /*                                                           */
 /*************************************************************/
 
@@ -33,6 +54,12 @@
 #include "envrnmnt.h"
 #include "extnfunc.h"
 #include "cstrnutl.h"
+#if OBJECT_SYSTEM
+#include "inscom.h"
+#include "insfun.h"
+#include "classcom.h"
+#include "classexm.h"
+#endif
 
 #include "cstrnchk.h"
 
@@ -40,11 +67,11 @@
 /* LOCAL INTERNAL FUNCTION DEFINITIONS */
 /***************************************/
 
-   static BOOLEAN                 CheckRangeAgainstCardinalityConstraint(void *,int,int,CONSTRAINT_RECORD *);
+   static intBool                 CheckRangeAgainstCardinalityConstraint(void *,int,int,CONSTRAINT_RECORD *);
    static int                     CheckFunctionReturnType(int,CONSTRAINT_RECORD *);
-   static BOOLEAN                 CheckTypeConstraint(int,CONSTRAINT_RECORD *);
-   static BOOLEAN                 CheckRangeConstraint(void *,int,void *,CONSTRAINT_RECORD *);
-   static void                    PrintRange(void *,char *,CONSTRAINT_RECORD *);
+   static intBool                 CheckTypeConstraint(int,CONSTRAINT_RECORD *);
+   static intBool                 CheckRangeConstraint(void *,int,void *,CONSTRAINT_RECORD *);
+   static void                    PrintRange(void *,const char *,CONSTRAINT_RECORD *);
 
 /******************************************************/
 /* CheckFunctionReturnType: Checks a functions return */
@@ -108,6 +135,10 @@ static int CheckFunctionReturnType(
         if (constraints->instanceAddressesAllowed) return(TRUE);
         else return(FALSE);
 
+      case 'y':
+        if (constraints->factAddressesAllowed) return(TRUE);
+        else return(FALSE);
+
       case 'o':
         if (constraints->instanceNamesAllowed) return(TRUE);
         else return(FALSE);
@@ -127,7 +158,7 @@ static int CheckFunctionReturnType(
 /*   data type satisfies the type constraint fields */
 /*   of aconstraint record.                         */
 /****************************************************/
-static BOOLEAN CheckTypeConstraint(
+static intBool CheckTypeConstraint(
   int type,
   CONSTRAINT_RECORD *constraints)
   {
@@ -174,7 +205,7 @@ static BOOLEAN CheckTypeConstraint(
 /*   falls within the range of allowed cardinalities    */
 /*   for a constraint record.                           */
 /********************************************************/
-globle BOOLEAN CheckCardinalityConstraint(
+globle intBool CheckCardinalityConstraint(
   void *theEnv,
   long number,
   CONSTRAINT_RECORD *constraints)
@@ -228,7 +259,7 @@ globle BOOLEAN CheckCardinalityConstraint(
 /*   least one of the numbers in the range is within the allowed */
 /*   cardinality, otherwise FALSE is returned.                   */
 /*****************************************************************/
-static BOOLEAN CheckRangeAgainstCardinalityConstraint(
+static intBool CheckRangeAgainstCardinalityConstraint(
   void *theEnv,
   int min,
   int max,
@@ -288,7 +319,7 @@ static BOOLEAN CheckRangeAgainstCardinalityConstraint(
 /*   record. Returns TRUE if the constraints are satisfied, otherwise */
 /*   FALSE is returned.                                               */
 /**********************************************************************/
-globle BOOLEAN CheckAllowedValuesConstraint(
+globle intBool CheckAllowedValuesConstraint(
   int type,
   void *vPtr,
   CONSTRAINT_RECORD *constraints)
@@ -365,11 +396,100 @@ globle BOOLEAN CheckAllowedValuesConstraint(
    return(FALSE);
   }
 
+/**********************************************************************/
+/* CheckAllowedClassesConstraint: Determines if a primitive data type */
+/*   satisfies the allowed-classes constraint fields of a constraint  */
+/*   record. Returns TRUE if the constraints are satisfied, otherwise */
+/*   FALSE is returned.                                               */
+/**********************************************************************/
+globle intBool CheckAllowedClassesConstraint(
+  void *theEnv,
+  int type,
+  void *vPtr,
+  CONSTRAINT_RECORD *constraints)
+  {
+#if OBJECT_SYSTEM
+   struct expr *tmpPtr;
+   INSTANCE_TYPE *ins;
+   DEFCLASS *insClass, *cmpClass;
+
+   /*=========================================*/
+   /* If the constraint record is NULL, there */
+   /* is no allowed-classes restriction.      */
+   /*=========================================*/
+
+   if (constraints == NULL) return(TRUE);
+
+   /*======================================*/
+   /* The constraint is satisfied if there */
+   /* aren't any class restrictions.       */
+   /*======================================*/
+   
+   if (constraints->classList == NULL)
+     { return(TRUE); }
+
+   /*==================================*/
+   /* Class restrictions only apply to */
+   /* instances and instance names.    */
+   /*==================================*/
+    
+   if ((type != INSTANCE_ADDRESS) && (type != INSTANCE_NAME))
+     { return(TRUE); }
+
+   /*=============================================*/
+   /* If an instance name is specified, determine */
+   /* whether the instance exists.                */
+   /*=============================================*/
+   
+   if (type == INSTANCE_ADDRESS)
+     { ins = (INSTANCE_TYPE *) vPtr; }
+   else
+     { ins = FindInstanceBySymbol(theEnv,(SYMBOL_HN *) vPtr); }
+    
+   if (ins == NULL)
+     { return(FALSE); }
+   
+   /*======================================================*/
+   /* Search through the class list to see if the instance */
+   /* belongs to one of the allowed classes in the list.   */
+   /*======================================================*/
+
+   insClass = (DEFCLASS *) EnvGetInstanceClass(theEnv,ins);
+   for (tmpPtr = constraints->classList;
+        tmpPtr != NULL;
+        tmpPtr = tmpPtr->nextArg)
+     {
+      //cmpClass = (DEFCLASS *) EnvFindDefclass(theEnv,ValueToString(tmpPtr->value));
+      cmpClass = (DEFCLASS *) LookupDefclassByMdlOrScope(theEnv,ValueToString(tmpPtr->value));
+      if (cmpClass == NULL) continue;
+      if (cmpClass == insClass) return(TRUE);
+      if (EnvSubclassP(theEnv,insClass,cmpClass)) return(TRUE);
+     }
+
+   /*=========================================================*/
+   /* If a parent class wasn't found in the list, then return */
+   /* FALSE because the constraint has been violated.         */
+   /*=========================================================*/
+
+   return(FALSE);
+#else
+
+#if MAC_XCD
+#pragma unused(theEnv)
+#pragma unused(type)
+#pragma unused(vPtr)
+#pragma unused(constraints)
+#endif
+
+   return(TRUE);
+#endif     
+  }
+
 /*************************************************************/
 /* CheckRangeConstraint: Determines if a primitive data type */
 /*   satisfies the range constraint of a constraint record.  */
 /*************************************************************/
-static BOOLEAN CheckRangeConstraint(
+static intBool CheckRangeConstraint(
   void *theEnv,
   int type,
   void *vPtr,
@@ -431,8 +551,8 @@ static BOOLEAN CheckRangeConstraint(
 /************************************************/
 globle void ConstraintViolationErrorMessage(
   void *theEnv,
-  char *theWhat,
-  char *thePlace,
+  const char *theWhat,
+  const char *thePlace,
   int command,
   int thePattern,
   struct symbolHashNode *theSlot,
@@ -506,6 +626,8 @@ globle void ConstraintViolationErrorMessage(
      { EnvPrintRouter(theEnv,WERROR,"\ndoes not match the allowed values"); }
    else if (violationType == CARDINALITY_VIOLATION)
      { EnvPrintRouter(theEnv,WERROR,"\ndoes not satisfy the cardinality restrictions"); }
+   else if (violationType == ALLOWED_CLASSES_VIOLATION)
+     { EnvPrintRouter(theEnv,WERROR,"\ndoes not match the allowed classes"); }
 
    /*==============================================*/
    /* Print either the slot name or field position */
@@ -520,7 +642,7 @@ globle void ConstraintViolationErrorMessage(
    else if (theField > 0)
      {
       EnvPrintRouter(theEnv,WERROR," for field #");
-      PrintLongInteger(theEnv,WERROR,(long) theField);
+      PrintLongInteger(theEnv,WERROR,(long long) theField);
      }
 
    EnvPrintRouter(theEnv,WERROR,".\n");
@@ -532,7 +654,7 @@ globle void ConstraintViolationErrorMessage(
 /********************************************************************/
 static void PrintRange(
   void *theEnv,
-  char *logicalName,
+  const char *logicalName,
   CONSTRAINT_RECORD *theConstraint)
   {
    if (theConstraint->minValue->value == SymbolData(theEnv)->NegativeInfinity)
@@ -600,6 +722,9 @@ globle int ConstraintCheckValue(
    else if (CheckAllowedValuesConstraint(theType,theValue,theConstraints) == FALSE)
      { return(ALLOWED_VALUES_VIOLATION); }
 
+   else if (CheckAllowedClassesConstraint(theEnv,theType,theValue,theConstraints) == FALSE)
+     { return(ALLOWED_CLASSES_VIOLATION); }
+
    else if (CheckRangeConstraint(theEnv,theType,theValue,theConstraints) == FALSE)
      { return(RANGE_VIOLATION); }
 
@@ -621,7 +746,7 @@ globle int ConstraintCheckExpressionChain(
   struct expr *theExpression,
   CONSTRAINT_RECORD *theConstraints)
   {
-   struct expr *exp;
+   struct expr *theExp;
    int min = 0, max = 0, vCode;
 
    /*===========================================================*/
@@ -630,13 +755,13 @@ globle int ConstraintCheckExpressionChain(
    /* positive infinity).                                       */
    /*===========================================================*/
 
-   for (exp = theExpression ; exp != NULL ; exp = exp->nextArg)
+   for (theExp = theExpression ; theExp != NULL ; theExp = theExp->nextArg)
      {
-      if (ConstantType(exp->type)) min++;
-      else if (exp->type == FCALL)
+      if (ConstantType(theExp->type)) min++;
+      else if (theExp->type == FCALL)
         {
-         if ((ExpressionFunctionType(exp) != 'm') &&
-             (ExpressionFunctionType(exp) != 'u')) min++;
+         if ((ExpressionFunctionType(theExp) != 'm') &&
+             (ExpressionFunctionType(theExp) != 'u')) min++;
          else max = -1;
         }
       else max = -1;
@@ -654,9 +779,9 @@ globle int ConstraintCheckExpressionChain(
    /* Check for other constraint violations. */
    /*========================================*/
 
-   for (exp = theExpression ; exp != NULL ; exp = exp->nextArg)
+   for (theExp = theExpression ; theExp != NULL ; theExp = theExp->nextArg)
      {
-      vCode = ConstraintCheckValue(theEnv,exp->type,exp->value,theConstraints);
+      vCode = ConstraintCheckValue(theEnv,theExp->type,theExp->value,theConstraints);
       if (vCode != NO_VIOLATION)
         return(vCode);
      }
@@ -702,7 +827,7 @@ globle int ConstraintCheckExpression(
 /* UnmatchableConstraint: Determines if a constraint */
 /*  record can still be satisfied by some value.     */
 /*****************************************************/
-globle BOOLEAN UnmatchableConstraint(
+globle intBool UnmatchableConstraint(
   CONSTRAINT_RECORD *theConstraint)
   {
    if (theConstraint == NULL) return(FALSE);

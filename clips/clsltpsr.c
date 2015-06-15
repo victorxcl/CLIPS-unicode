@@ -1,7 +1,7 @@
    /*******************************************************/
    /*      "C" Language Integrated Production System      */
    /*                                                     */
-   /*               CLIPS Version 6.22  06/15/04          */
+   /*               CLIPS Version 6.30  08/16/14          */
    /*                                                     */
    /*                  CLASS PARSER MODULE                */
    /*******************************************************/
@@ -10,11 +10,23 @@
 /* Purpose: Parsing Routines for Defclass Construct           */
 /*                                                            */
 /* Principal Programmer(s):                                   */
-/*      Brian L. Donnell                                      */
+/*      Brian L. Dantes                                       */
 /*                                                            */
 /* Contributing Programmer(s):                                */
 /*                                                            */
 /* Revision History:                                          */
+/*                                                            */
+/*      6.24: Converted INSTANCE_PATTERN_MATCHING to          */
+/*            DEFRULE_CONSTRUCT.                              */
+/*                                                            */
+/*            Renamed BOOLEAN macro type to intBool.          */
+/*                                                            */
+/*      6.30: Changed integer type/precision.                 */
+/*                                                            */
+/*            Support for long long integers.                 */
+/*                                                            */
+/*            Added const qualifiers to remove C++            */
+/*            deprecation warnings.                           */
 /*                                                            */
 /**************************************************************/
 
@@ -107,12 +119,13 @@
 
 static SLOT_DESC *NewSlot(void *,SYMBOL_HN *);
 static TEMP_SLOT_LINK *InsertSlot(void *,TEMP_SLOT_LINK *,SLOT_DESC *);
-static int ParseSimpleFacet(void *,char *,char*,char *,int,char *,char *,char *,char *,SYMBOL_HN **);
-static BOOLEAN ParseDefaultFacet(void *,char *,char *,SLOT_DESC *);
-static void BuildCompositeFacets(void *,SLOT_DESC *,PACKED_CLASS_LINKS *,char *,
+static int ParseSimpleFacet(void *,const char *,char*,const char *,int,const char *,
+                            const char *,const char *,const char *,SYMBOL_HN **);
+static intBool ParseDefaultFacet(void *,const char *,char *,SLOT_DESC *);
+static void BuildCompositeFacets(void *,SLOT_DESC *,PACKED_CLASS_LINKS *,const char *,
                                  CONSTRAINT_PARSE_RECORD *);
-static BOOLEAN CheckForFacetConflicts(void *,SLOT_DESC *,CONSTRAINT_PARSE_RECORD *);
-static BOOLEAN EvaluateSlotDefaultValue(void *,SLOT_DESC *,char *);
+static intBool CheckForFacetConflicts(void *,SLOT_DESC *,CONSTRAINT_PARSE_RECORD *);
+static intBool EvaluateSlotDefaultValue(void *,SLOT_DESC *,const char *);
 
 /* =========================================
    *****************************************
@@ -141,7 +154,7 @@ static BOOLEAN EvaluateSlotDefaultValue(void *,SLOT_DESC *,char *);
  ************************************************************/
 globle TEMP_SLOT_LINK *ParseSlot(
   void *theEnv,
-  char *readSource,
+  const char *readSource,
   TEMP_SLOT_LINK *slist,
   PACKED_CLASS_LINKS *preclist,
   int multiSlot,
@@ -253,7 +266,7 @@ globle TEMP_SLOT_LINK *ParseSlot(
            goto ParseSlotError;
          slot->composite = rtnCode;
         }
-#if INSTANCE_PATTERN_MATCHING
+#if DEFRULE_CONSTRUCT
       else if (strcmp(DOToString(DefclassData(theEnv)->ObjectParseToken),MATCH_FACET) == 0)
         {
          rtnCode = ParseSimpleFacet(theEnv,readSource,specbits,MATCH_FACET,MATCH_BIT,
@@ -411,7 +424,7 @@ static SLOT_DESC *NewSlot(
    slot->dynamicDefault = 1;
    slot->defaultSpecified = 0;
    slot->noDefault = 0;
-#if INSTANCE_PATTERN_MATCHING
+#if DEFRULE_CONSTRUCT
    slot->reactive = 1;
 #endif
    slot->noInherit = 0;
@@ -514,14 +527,14 @@ static TEMP_SLOT_LINK *InsertSlot(
  *****************************************************************/
 static int ParseSimpleFacet(
   void *theEnv,
-  char *readSource,
+  const char *readSource,
   char *specbits,
-  char *facetName,
+  const char *facetName,
   int testBit,
-  char *clearRelation,
-  char *setRelation,
-  char *alternateRelation,
-  char *varRelation,
+  const char *clearRelation,
+  const char *setRelation,
+  const char *alternateRelation,
+  const char *varRelation,
   SYMBOL_HN **facetSymbolicValue)
   {
    int rtnCode;
@@ -597,9 +610,9 @@ ParseSimpleFacetError:
   NOTES        : Syntax: (default ?NONE|<expression>*)
                          (default-dynamic <expression>*)
  *************************************************************/
-static BOOLEAN ParseDefaultFacet(
+static intBool ParseDefaultFacet(
   void *theEnv,
-  char *readSource,
+  const char *readSource,
   char *specbits,
   SLOT_DESC *slot)
   {
@@ -668,11 +681,11 @@ static void BuildCompositeFacets(
   void *theEnv,
   SLOT_DESC *sd,
   PACKED_CLASS_LINKS *preclist,
-  char *specbits,
+  const char *specbits,
   CONSTRAINT_PARSE_RECORD *parsedConstraint)
   {
    SLOT_DESC *compslot = NULL;
-   register unsigned i;
+   long i;
 
    for (i = 1 ; i < preclist->classCount ; i++)
      {
@@ -711,7 +724,7 @@ static void BuildCompositeFacets(
          sd->noWrite = compslot->noWrite;
          sd->initializeOnly = compslot->initializeOnly;
         }
-#if INSTANCE_PATTERN_MATCHING
+#if DEFRULE_CONSTRUCT
       if (TestBitMap(specbits,MATCH_BIT) == 0)
         sd->reactive = compslot->reactive;
 #endif
@@ -748,7 +761,7 @@ static void BuildCompositeFacets(
                  constraint for single-field slot
   NOTES        : None
  ***************************************************/
-static BOOLEAN CheckForFacetConflicts(
+static intBool CheckForFacetConflicts(
   void *theEnv,
   SLOT_DESC *sd,
   CONSTRAINT_PARSE_RECORD *parsedConstraint)
@@ -765,8 +778,8 @@ static BOOLEAN CheckForFacetConflicts(
         {
          ReturnExpression(theEnv,sd->constraint->minFields);
          ReturnExpression(theEnv,sd->constraint->maxFields);
-         sd->constraint->minFields = GenConstant(theEnv,INTEGER,EnvAddLong(theEnv,1L));
-         sd->constraint->maxFields = GenConstant(theEnv,INTEGER,EnvAddLong(theEnv,1L));
+         sd->constraint->minFields = GenConstant(theEnv,INTEGER,EnvAddLong(theEnv,1LL));
+         sd->constraint->maxFields = GenConstant(theEnv,INTEGER,EnvAddLong(theEnv,1LL));
         }
      }
    if (sd->noDefault && sd->noWrite)
@@ -803,10 +816,10 @@ static BOOLEAN CheckForFacetConflicts(
   NOTES        : On errors, slot is marked as dynamix so that
                  DeleteSlots() will erase the slot expression
  ********************************************************************/
-static BOOLEAN EvaluateSlotDefaultValue(
+static intBool EvaluateSlotDefaultValue(
   void *theEnv,
   SLOT_DESC *sd,
-  char *specbits)
+  const char *specbits)
   {
    DATA_OBJECT temp;
    int oldce,olddcc,vCode;
@@ -831,7 +844,7 @@ static BOOLEAN EvaluateSlotDefaultValue(
          SetExecutingConstruct(theEnv,TRUE);
          olddcc = EnvSetDynamicConstraintChecking(theEnv,EnvGetStaticConstraintChecking(theEnv));
          vCode = EvaluateAndStoreInDataObject(theEnv,(int) sd->multiple,
-                  (EXPRESSION *) sd->defaultValue,&temp);
+                  (EXPRESSION *) sd->defaultValue,&temp,TRUE);
          if (vCode != FALSE)
            vCode = ValidSlotValue(theEnv,&temp,sd,NULL,"slot default value");
          EnvSetDynamicConstraintChecking(theEnv,olddcc);
@@ -854,7 +867,7 @@ static BOOLEAN EvaluateSlotDefaultValue(
         {
          sd->defaultValue = (void *) get_struct(theEnv,dataObject);
          DeriveDefaultFromConstraints(theEnv,sd->constraint,
-                                      (DATA_OBJECT *) sd->defaultValue,(int) sd->multiple);
+                                      (DATA_OBJECT *) sd->defaultValue,(int) sd->multiple,TRUE);
          ValueInstall(theEnv,(DATA_OBJECT *) sd->defaultValue);
         }
      }

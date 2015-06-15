@@ -1,7 +1,7 @@
    /*******************************************************/
    /*      "C" Language Integrated Production System      */
    /*                                                     */
-   /*              CLIPS Version 6.22  06/15/04           */
+   /*              CLIPS Version 6.30  02/05/15           */
    /*                                                     */
    /*            INSTANCE PRIMITIVE SUPPORT MODULE        */
    /*******************************************************/
@@ -10,12 +10,34 @@
 /* Purpose:  Creation and Deletion of Instances Routines     */
 /*                                                           */
 /* Principal Programmer(s):                                  */
-/*      Brian L. Donnell                                     */
+/*      Brian L. Dantes                                      */
 /*                                                           */
 /* Contributing Programmer(s):                               */
 /*                                                           */
 /*                                                           */
 /* Revision History:                                         */
+/*                                                           */
+/*      6.23: Correction for FalseSymbol/TrueSymbol. DR0859  */
+/*                                                           */
+/*      6.24: Removed LOGICAL_DEPENDENCIES compilation flag. */
+/*                                                           */
+/*            Converted INSTANCE_PATTERN_MATCHING to         */
+/*            DEFRULE_CONSTRUCT.                             */
+/*                                                           */
+/*            Renamed BOOLEAN macro type to intBool.         */
+/*                                                           */
+/*      6.30: Changed integer type/precision.                */
+/*                                                           */
+/*            Used gensprintf instead of sprintf.            */
+/*                                                           */
+/*            Changed garbage collection algorithm.          */
+/*                                                           */
+/*            Added const qualifiers to remove C++           */
+/*            deprecation warnings.                          */
+/*                                                           */
+/*            Newly created instances can no longer use      */
+/*            a preexisting instance name of another class   */
+/*            [INSMNGR16].                                   */
 /*                                                           */
 /*************************************************************/
 
@@ -28,13 +50,10 @@
 
 #if OBJECT_SYSTEM
 
-#if INSTANCE_PATTERN_MATCHING
+#if DEFRULE_CONSTRUCT
 #include "network.h"
 #include "drive.h"
 #include "objrtmch.h"
-#endif
-
-#if LOGICAL_DEPENDENCIES
 #include "lgcldpnd.h"
 #endif
 
@@ -50,6 +69,7 @@
 #include "msgfun.h"
 #include "prccode.h"
 #include "router.h"
+#include "sysdep.h"
 #include "utility.h"
 
 #define _INSMNGR_SOURCE_
@@ -76,13 +96,13 @@ static INSTANCE_TYPE *NewInstance(void *);
 static INSTANCE_TYPE *InstanceLocationInfo(void *,DEFCLASS *,SYMBOL_HN *,INSTANCE_TYPE **,
                                            unsigned *);
 static void InstallInstance(void *,INSTANCE_TYPE *,int);
-static void BuildDefaultSlots(void *,BOOLEAN);
+static void BuildDefaultSlots(void *,intBool);
 static int CoreInitializeInstance(void *,INSTANCE_TYPE *,EXPRESSION *);
 static int InsertSlotOverrides(void *,INSTANCE_TYPE *,EXPRESSION *);
 static void EvaluateClassDefaults(void *,INSTANCE_TYPE *);
 
 #if DEBUGGING_FUNCTIONS
-static void PrintInstanceWatch(void *,char *,INSTANCE_TYPE *);
+static void PrintInstanceWatch(void *,const char *,INSTANCE_TYPE *);
 #endif
 
 /* =========================================
@@ -108,7 +128,7 @@ globle void InitializeInstanceCommand(
    INSTANCE_TYPE *ins;
 
    SetpType(result,SYMBOL);
-   SetpValue(result,SymbolData(theEnv)->FalseSymbol);
+   SetpValue(result,EnvFalseSymbol(theEnv));
    ins = CheckInstance(theEnv,"initialize-instance");
    if (ins == NULL)
      return;
@@ -128,6 +148,9 @@ globle void InitializeInstanceCommand(
   NOTES        : H/L Syntax:
                  (active-make-instance <instance-name> of <class>
                     <slot-override>*)
+  CHANGES      : It's now possible to create an instance of a
+                 class that's not in scope if the module name
+                 is specified.
  ****************************************************************/
 globle void MakeInstanceCommand(
   void *theEnv,
@@ -139,7 +162,7 @@ globle void MakeInstanceCommand(
    DEFCLASS *cls;
 
    SetpType(result,SYMBOL);
-   SetpValue(result,SymbolData(theEnv)->FalseSymbol);
+   SetpValue(result,EnvFalseSymbol(theEnv));
    EvaluateExpression(theEnv,GetFirstArgument(),&temp);
    if ((GetType(temp) != SYMBOL) &&
        (GetType(temp) != INSTANCE_NAME))
@@ -163,7 +186,10 @@ globle void MakeInstanceCommand(
          SetEvaluationError(theEnv,TRUE);
          return;
         }
-      cls = LookupDefclassInScope(theEnv,DOToString(temp));
+    
+      //cls = LookupDefclassInScope(theEnv,DOToString(temp));
+      cls = LookupDefclassByMdlOrScope(theEnv,DOToString(temp)); // Module or scope is now allowed
+
       if (cls == NULL)
         {
          ClassExistError(theEnv,ValueToString(ExpressionFunctionCallName(EvaluationData(theEnv)->CurrentExpression)),
@@ -202,18 +228,30 @@ globle void MakeInstanceCommand(
                  and new symbol created
   NOTES        : Used to differentiate between
                  instances of the same name in
-                 different modules
+                 different modules.
+                 Instances are now global in scope so
+                 each instance name must belong to a
+                 single instance. It's no longer
+                 necessary to return the full instance
+                 name.
  ***************************************************/
 globle SYMBOL_HN *GetFullInstanceName(
   void *theEnv,
   INSTANCE_TYPE *ins)
   {
-   char *moduleName,*buffer;
-   unsigned bufsz;
+   /*
+   const char *moduleName;
+   char *buffer;
+   size_t bufsz;
    SYMBOL_HN *iname;
-
+   */
+   
    if (ins == &InstanceData(theEnv)->DummyInstance)
      return((SYMBOL_HN *) EnvAddSymbol(theEnv,"Dummy Instance"));
+   
+   return(ins->name);
+     
+/*
    if (ins->garbage)
      return(ins->name);
    if (ins->cls->header.whichModule->theModule == ((struct defmodule *) EnvGetCurrentModule(theEnv)))
@@ -222,10 +260,11 @@ globle SYMBOL_HN *GetFullInstanceName(
    bufsz = (sizeof(char) * (strlen(moduleName) +
                                   strlen(ValueToString(ins->name)) + 3));
    buffer = (char *) gm2(theEnv,bufsz);
-   sprintf(buffer,"%s::%s",moduleName,ValueToString(ins->name));
+   gensprintf(buffer,"%s::%s",moduleName,ValueToString(ins->name));
    iname = (SYMBOL_HN *) EnvAddSymbol(theEnv,buffer);
    rm(theEnv,(void *) buffer,bufsz);
    return(iname);
+*/
   }
 
 /***************************************************
@@ -249,7 +288,7 @@ globle INSTANCE_TYPE *BuildInstance(
   void *theEnv,
   SYMBOL_HN *iname,
   DEFCLASS *cls,
-  BOOLEAN initMessage)
+  intBool initMessage)
   {
    INSTANCE_TYPE *ins,*iprv;
    unsigned hashTableIndex;
@@ -257,7 +296,7 @@ globle INSTANCE_TYPE *BuildInstance(
    SYMBOL_HN *moduleName;
    DATA_OBJECT temp;
 
-#if INSTANCE_PATTERN_MATCHING
+#if DEFRULE_CONSTRUCT
    if (EngineData(theEnv)->JoinOperationInProgress && cls->reactive)
      {
       PrintErrorID(theEnv,"INSMNGR",10,FALSE);
@@ -291,8 +330,21 @@ globle INSTANCE_TYPE *BuildInstance(
       iname = ExtractConstructName(theEnv,modulePosition,ValueToString(iname));
      }
    ins = InstanceLocationInfo(theEnv,cls,iname,&iprv,&hashTableIndex);
+      
    if (ins != NULL)
      {
+      if (ins->cls != cls)
+        {
+         PrintErrorID(theEnv,"INSMNGR",16,FALSE);
+         EnvPrintRouter(theEnv,WERROR,"The instance name ");
+         EnvPrintRouter(theEnv,WERROR,ValueToString(iname));
+         EnvPrintRouter(theEnv,WERROR," is in use by an instance of class ");
+         EnvPrintRouter(theEnv,WERROR,ValueToString(ins->cls->header.name));
+         EnvPrintRouter(theEnv,WERROR,".\n");
+         SetEvaluationError(theEnv,TRUE);
+         return(NULL);
+        }
+        
       if (ins->installed == 0)
         {
          PrintErrorID(theEnv,"INSMNGR",4,FALSE);
@@ -330,7 +382,7 @@ globle INSTANCE_TYPE *BuildInstance(
       ============================================================= */
    InstanceData(theEnv)->CurrentInstance = NewInstance(theEnv);
 
-#if LOGICAL_DEPENDENCIES
+#if DEFRULE_CONSTRUCT
    /* ==============================================
       Add this new instance as a dependent to
       any currently active basis - if the partial
@@ -400,7 +452,7 @@ globle INSTANCE_TYPE *BuildInstance(
    if (InstanceData(theEnv)->MkInsMsgPass)
      { DirectMessage(theEnv,MessageHandlerData(theEnv)->CREATE_SYMBOL,ins,&temp,NULL); }
 
-#if INSTANCE_PATTERN_MATCHING
+#if DEFRULE_CONSTRUCT
    if (ins->cls->reactive)
      ObjectNetworkAction(theEnv,OBJECT_ASSERT,(INSTANCE_TYPE *) ins,-1);
 #endif
@@ -428,7 +480,7 @@ globle void InitSlotsCommand(
   DATA_OBJECT *result)
   {
    SetpType(result,SYMBOL);
-   SetpValue(result,SymbolData(theEnv)->FalseSymbol);
+   SetpValue(result,EnvFalseSymbol(theEnv));
    EvaluationData(theEnv)->EvaluationError = FALSE;
    if (CheckCurrentMessage(theEnv,"init-slots",TRUE) == FALSE)
      return;
@@ -456,14 +508,14 @@ globle void InitSlotsCommand(
                    node in the list is (assuming the
                    instance was garbage collected).
  ******************************************************/
-globle BOOLEAN QuashInstance(
+globle intBool QuashInstance(
   void *theEnv,
   INSTANCE_TYPE *ins)
   {
    register int iflag;
    IGARBAGE *gptr;
 
-#if INSTANCE_PATTERN_MATCHING
+#if DEFRULE_CONSTRUCT
    if (EngineData(theEnv)->JoinOperationInProgress && ins->cls->reactive)
      {
       PrintErrorID(theEnv,"INSMNGR",12,FALSE);
@@ -489,11 +541,9 @@ globle BOOLEAN QuashInstance(
      PrintInstanceWatch(theEnv,UNMAKE_TRACE,ins);
 #endif
 
-#if LOGICAL_DEPENDENCIES
+#if DEFRULE_CONSTRUCT
    RemoveEntityDependencies(theEnv,(struct patternEntity *) ins);
-#endif
 
-#if INSTANCE_PATTERN_MATCHING
    if (ins->cls->reactive)
      ObjectNetworkAction(theEnv,OBJECT_RETRACT,(INSTANCE_TYPE *) ins,-1);
 #endif
@@ -531,16 +581,17 @@ globle BOOLEAN QuashInstance(
       rule, don't bother deleting its slots yet, for
       they may still be needed by pattern variables
       ============================================== */
+#if DEFRULE_CONSTRUCT
    if ((iflag == 1)
-#if INSTANCE_PATTERN_MATCHING
-       && (ins->header.busyCount == 0)
+       && (ins->header.busyCount == 0))
+#else
+   if (iflag == 1)
 #endif
-     )
      RemoveInstanceData(theEnv,ins);
 
-   if ((ins->busy == 0) && (ins->depth > EvaluationData(theEnv)->CurrentEvaluationDepth) &&
+   if ((ins->busy == 0) && 
        (InstanceData(theEnv)->MaintainGarbageInstances == FALSE)
-#if INSTANCE_PATTERN_MATCHING
+#if DEFRULE_CONSTRUCT
         && (ins->header.busyCount == 0)
 #endif
        )
@@ -555,15 +606,14 @@ globle BOOLEAN QuashInstance(
       gptr->ins = ins;
       gptr->nxt = InstanceData(theEnv)->InstanceGarbageList;
       InstanceData(theEnv)->InstanceGarbageList = gptr;
-      UtilityData(theEnv)->EphemeralItemCount += 2;
-      UtilityData(theEnv)->EphemeralItemSize += InstanceSizeHeuristic(ins) + sizeof(IGARBAGE);
+      UtilityData(theEnv)->CurrentGarbageFrame->dirty = TRUE;
      }
    InstanceData(theEnv)->ChangesToInstances = TRUE;
    return(1);
   }
 
 
-#if INSTANCE_PATTERN_MATCHING
+#if DEFRULE_CONSTRUCT
 
 /****************************************************
   NAME         : InactiveInitializeInstance
@@ -635,15 +685,13 @@ static INSTANCE_TYPE *NewInstance(
    INSTANCE_TYPE *instance;
 
    instance = get_struct(theEnv,instance);
-#if INSTANCE_PATTERN_MATCHING || LOGICAL_DEPENDENCIES
+#if DEFRULE_CONSTRUCT
    instance->header.theInfo = &InstanceData(theEnv)->InstanceInfo;
-#if LOGICAL_DEPENDENCIES
+
    instance->header.dependents = NULL;
-#endif
    instance->header.busyCount = 0;
    instance->header.timeTag = 0L;
-#endif
-#if INSTANCE_PATTERN_MATCHING
+
    instance->partialMatchList = NULL;
    instance->basisSlots = NULL;
    instance->reteSynchronized = FALSE;
@@ -653,7 +701,6 @@ static INSTANCE_TYPE *NewInstance(
    instance->garbage = 0;
    instance->initSlotsCalled = 0;
    instance->initializeInProgress = 0;
-   instance->depth = EvaluationData(theEnv)->CurrentEvaluationDepth;
    instance->name = NULL;
    instance->hashTableIndex = 0;
    instance->cls = NULL;
@@ -679,7 +726,9 @@ static INSTANCE_TYPE *NewInstance(
   RETURNS      : The address of the found instance, NULL otherwise
   SIDE EFFECTS : None
   NOTES        : Instance names only have to be unique within
-                 a module
+                 a module.
+                 Change: instance names must be unique regardless
+                 of module.
  *****************************************************************/
 static INSTANCE_TYPE *InstanceLocationInfo(
   void *theEnv,
@@ -699,6 +748,15 @@ static INSTANCE_TYPE *InstanceLocationInfo(
       module their classes are in
       ======================================== */
    *prv = NULL;
+   while (ins != NULL)
+     {
+      if (ins->name == iname)
+        { return(ins); }
+      *prv = ins;
+      ins = ins->nxtHash;
+     }
+      
+   /*
    while ((ins != NULL) ? (ins->name != iname) : FALSE)
      {
       *prv = ins;
@@ -712,6 +770,7 @@ static INSTANCE_TYPE *InstanceLocationInfo(
       *prv = ins;
       ins = ins->nxtHash;
      }
+   */
    return(NULL);
   }
 
@@ -742,7 +801,6 @@ static void InstallInstance(
         PrintInstanceWatch(theEnv,MAKE_TRACE,ins);
 #endif
       ins->installed = 1;
-      ins->depth = EvaluationData(theEnv)->CurrentEvaluationDepth;
       IncrementSymbolCount(ins->name);
       IncrementDefclassBusyCount(theEnv,(void *) ins->cls);
       InstanceData(theEnv)->GlobalNumberOfInstances++;
@@ -782,7 +840,7 @@ static void InstallInstance(
  ****************************************************************/
 static void BuildDefaultSlots(
   void *theEnv,
-  BOOLEAN initMessage)
+  intBool initMessage)
   {
    register unsigned i,j;
    unsigned scnt;
@@ -968,7 +1026,7 @@ static int InsertSlotOverrides(
       else if (slot_exp->nextArg->argList)
         {
          if (EvaluateAndStoreInDataObject(theEnv,(int) slot->desc->multiple,
-                               slot_exp->nextArg->argList,&temp))
+                               slot_exp->nextArg->argList,&temp,TRUE))
              PutSlotValue(theEnv,ins,slot,&temp,&junk,"function make-instance");
         }
       else
@@ -1006,7 +1064,7 @@ static void EvaluateClassDefaults(
   {
    INSTANCE_SLOT *slot;
    DATA_OBJECT temp,junk;
-   register unsigned i;
+   long i;
 
    if (ins->initializeInProgress == 0)
      {
@@ -1030,7 +1088,7 @@ static void EvaluateClassDefaults(
            {
             if (EvaluateAndStoreInDataObject(theEnv,(int) slot->desc->multiple,
                                              (EXPRESSION *) slot->desc->defaultValue,
-                                             &temp))
+                                             &temp,TRUE))
               PutSlotValue(theEnv,ins,slot,&temp,&junk,"function init-slots");
            }
          else if (((slot->desc->shared == 0) || (slot->desc->sharedCount == 1)) &&
@@ -1076,7 +1134,7 @@ static void EvaluateClassDefaults(
  ***************************************************/
 static void PrintInstanceWatch(
   void *theEnv,
-  char *traceString,
+  const char *traceString,
   INSTANCE_TYPE *theInstance)
   {
    EnvPrintRouter(theEnv,WTRACE,traceString);

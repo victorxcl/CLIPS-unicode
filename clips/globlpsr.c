@@ -1,7 +1,7 @@
    /*******************************************************/
    /*      "C" Language Integrated Production System      */
    /*                                                     */
-   /*             CLIPS Version 6.22  06/15/04            */
+   /*             CLIPS Version 6.30  08/16/14            */
    /*                                                     */
    /*              DEFGLOBAL PARSER MODULE                */
    /*******************************************************/
@@ -13,9 +13,23 @@
 /*      Gary D. Riley                                        */
 /*                                                           */
 /* Contributing Programmer(s):                               */
-/*      Brian L. Donnell                                     */
+/*      Brian L. Dantes                                      */
 /*                                                           */
 /* Revision History:                                         */
+/*                                                           */
+/*      6.24: Renamed BOOLEAN macro type to intBool.         */
+/*                                                           */
+/*            Made the construct redefinition message more   */
+/*            prominent.                                     */
+/*                                                           */
+/*      6.30: Removed conditional code for unsupported       */
+/*            compilers/operating systems (IBM_MCW and       */
+/*            MAC_MCW).                                      */
+/*                                                           */
+/*            Added const qualifiers to remove C++           */
+/*            deprecation warnings.                          */
+/*                                                           */
+/*            Moved WatchGlobals global to defglobalData.    */
 /*                                                           */
 /*************************************************************/
 
@@ -54,7 +68,7 @@
 /***************************************/
 
 #if (! RUN_TIME) && (! BLOAD_ONLY)
-   static BOOLEAN                 GetVariableDefinition(void *,char *,int *,int,struct token *);
+   static intBool                 GetVariableDefinition(void *,const char *,int *,int,struct token *);
    static void                    AddDefglobal(void *,SYMBOL_HN *,DATA_OBJECT_PTR,struct expr *);
 #endif
 
@@ -62,15 +76,11 @@
 /* ParseDefglobal: Coordinates all actions necessary for the parsing */
 /*   and creation of a defglobal into the current environment.       */
 /*********************************************************************/
-globle BOOLEAN ParseDefglobal(
+globle intBool ParseDefglobal(
   void *theEnv,
-  char *readSource)
+  const char *readSource)
   {
    int defglobalError = FALSE;
-#if (MAC_MCW || IBM_MCW) && (RUN_TIME || BLOAD_ONLY)
-#pragma unused(theEnv,readSource)
-#endif
-
 #if (! RUN_TIME) && (! BLOAD_ONLY)
 
    struct token theToken;
@@ -187,9 +197,9 @@ globle BOOLEAN ParseDefglobal(
 /*   defglobal construct) or an error occurs. The error status */
 /*   flag is also set if an error occurs.                      */
 /***************************************************************/
-static BOOLEAN GetVariableDefinition(
+static intBool GetVariableDefinition(
   void *theEnv,
-  char *readSource,
+  const char *readSource,
   int *defglobalError,
   int tokenRead,
   struct token *theToken)
@@ -230,10 +240,16 @@ static BOOLEAN GetVariableDefinition(
 #if DEBUGGING_FUNCTIONS
    if ((EnvGetWatchItem(theEnv,"compilations") == ON) && GetPrintWhileLoading(theEnv))
      {
-      if (QFindDefglobal(theEnv,variableName) != NULL) EnvPrintRouter(theEnv,WDIALOG,"Redefining defglobal: ?");
-      else EnvPrintRouter(theEnv,WDIALOG,"Defining defglobal: ");
-      EnvPrintRouter(theEnv,WDIALOG,ValueToString(variableName));
-      EnvPrintRouter(theEnv,WDIALOG,"\n");
+      const char *outRouter = WDIALOG;
+      if (QFindDefglobal(theEnv,variableName) != NULL) 
+        {
+         outRouter = WWARNING;
+         PrintWarningID(theEnv,"CSTRCPSR",1,TRUE);
+         EnvPrintRouter(theEnv,outRouter,"Redefining defglobal: ");
+        }
+      else EnvPrintRouter(theEnv,outRouter,"Defining defglobal: ");
+      EnvPrintRouter(theEnv,outRouter,ValueToString(variableName));
+      EnvPrintRouter(theEnv,outRouter,"\n");
      }
    else
 #endif
@@ -321,7 +337,7 @@ static void AddDefglobal(
   struct expr *ePtr)
   {
    struct defglobal *defglobalPtr;
-   BOOLEAN newGlobal = FALSE;
+   intBool newGlobal = FALSE;
 #if DEBUGGING_FUNCTIONS
    int GlobalHadWatch = FALSE;
 #endif
@@ -378,7 +394,7 @@ static void AddDefglobal(
    /*=================================*/
 
 #if DEBUGGING_FUNCTIONS
-   defglobalPtr->watch = GlobalHadWatch ? TRUE : WatchGlobals;
+   defglobalPtr->watch = GlobalHadWatch ? TRUE : DefglobalData(theEnv)->WatchGlobals;
 #endif
 
    /*======================================*/
@@ -424,7 +440,7 @@ static void AddDefglobal(
 /*   expression with the appropriate primitive data type which   */
 /*   can later be used to retrieve the global variable's value.  */
 /*****************************************************************/
-globle BOOLEAN ReplaceGlobalVariable(
+globle intBool ReplaceGlobalVariable(
   void *theEnv,
   struct expr *ePtr)
   {
@@ -478,7 +494,7 @@ globle BOOLEAN ReplaceGlobalVariable(
 /*****************************************************************/
 globle void GlobalReferenceErrorMessage(
   void *theEnv,
-  char *variableName)
+  const char *variableName)
   {
    PrintErrorID(theEnv,"GLOBLPSR",1,TRUE);
    EnvPrintRouter(theEnv,WERROR,"\nGlobal variable ?*");

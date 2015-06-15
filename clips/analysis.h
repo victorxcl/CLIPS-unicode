@@ -1,7 +1,7 @@
    /*******************************************************/
    /*      "C" Language Integrated Production System      */
    /*                                                     */
-   /*             CLIPS Version 6.20  01/31/02            */
+   /*             CLIPS Version 6.30  08/16/14            */
    /*                                                     */
    /*                ANALYSIS HEADER FILE                 */
    /*******************************************************/
@@ -18,6 +18,10 @@
 /* Contributing Programmer(s):                               */
 /*                                                           */
 /* Revision History:                                         */
+/*                                                           */
+/*      6.24: Renamed BOOLEAN macro type to intBool.         */
+/*                                                           */
+/*      6.30: Join network rework and optimizations.         */
 /*                                                           */
 /*************************************************************/
 
@@ -41,7 +45,19 @@
 #define LOCALE extern
 #endif
 
-   LOCALE BOOLEAN                        VariableAnalysis(void *,struct lhsParseNode *);
+/*****************************************************/
+/* nandFrame structure: Stores information about the */
+/*   current position in the nesting of not/and CEs  */
+/*   as the patterns of a rule are analyzed.         */
+/*****************************************************/
+struct nandFrame
+  {
+   int depth;
+   struct lhsParseNode *nandCE;
+   struct nandFrame *next;
+  };
+
+   LOCALE intBool                        VariableAnalysis(void *,struct lhsParseNode *);
 
 #endif
 

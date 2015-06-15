@@ -1,7 +1,7 @@
    /*******************************************************/
    /*      "C" Language Integrated Production System      */
    /*                                                     */
-   /*             CLIPS Version 6.20  01/31/02            */
+   /*             CLIPS Version 6.30  08/16/14            */
    /*                                                     */
    /*                CONSTRAINT HEADER FILE               */
    /*******************************************************/
@@ -18,6 +18,20 @@
 /* Contributing Programmer(s):                               */
 /*                                                           */
 /* Revision History:                                         */
+/*                                                           */
+/*      6.23: Correction for FalseSymbol/TrueSymbol. DR0859  */
+/*                                                           */
+/*      6.24: Added allowed-classes slot facet.              */
+/*                                                           */
+/*            Renamed BOOLEAN macro type to intBool.         */
+/*                                                           */
+/*      6.30: Removed conditional code for unsupported       */
+/*            compilers/operating systems (IBM_MCW and       */
+/*            MAC_MCW).                                      */
+/*                                                           */
+/*            Changed integer type/precision.                */
+/*                                                           */
+/*            Converted API macros to function calls.        */
 /*                                                           */
 /*************************************************************/
 
@@ -57,10 +71,12 @@ struct constraintRecord
    unsigned int stringRestriction : 1;
    unsigned int floatRestriction : 1;
    unsigned int integerRestriction : 1;
+   unsigned int classRestriction : 1;
    unsigned int instanceNameRestriction : 1;
    unsigned int multifieldsAllowed : 1;
    unsigned int singlefieldsAllowed : 1;
    unsigned short bsaveIndex;
+   struct expr *classList;
    struct expr *restrictionList;
    struct expr *minValue;
    struct expr *maxValue;
@@ -81,8 +97,8 @@ typedef struct constraintRecord CONSTRAINT_RECORD;
 struct constraintData
   { 
    struct constraintRecord **ConstraintHashtable;
-   BOOLEAN StaticConstraintChecking;
-   BOOLEAN DynamicConstraintChecking;
+   intBool StaticConstraintChecking;
+   intBool DynamicConstraintChecking;
 #if (BLOAD || BLOAD_ONLY || BLOAD_AND_BSAVE) && (! RUN_TIME)
    struct constraintRecord *ConstraintArray;
    long int NumberOfConstraints;
@@ -91,33 +107,30 @@ struct constraintData
 
 #define ConstraintData(theEnv) ((struct constraintData *) GetEnvironmentData(theEnv,CONSTRAINT_DATA))
 
-#if ENVIRONMENT_API_ONLY
-#define GetDynamicConstraintChecking(theEnv) EnvGetDynamicConstraintChecking(theEnv)
-#define GetStaticConstraintChecking(theEnv) EnvGetStaticConstraintChecking(theEnv)
-#define SetDynamicConstraintChecking(theEnv,a) EnvSetDynamicConstraintChecking(theEnv,a)
-#define SetStaticConstraintChecking(theEnv,a) EnvSetStaticConstraintChecking(theEnv,a)
-#else
-#define GetDynamicConstraintChecking() EnvGetDynamicConstraintChecking(GetCurrentEnvironment())
-#define GetStaticConstraintChecking() EnvGetStaticConstraintChecking(GetCurrentEnvironment())
-#define SetDynamicConstraintChecking(a) EnvSetDynamicConstraintChecking(GetCurrentEnvironment(),a)
-#define SetStaticConstraintChecking(a) EnvSetStaticConstraintChecking(GetCurrentEnvironment(),a)
-#endif
-
    LOCALE void                           InitializeConstraints(void *);
    LOCALE int                            GDCCommand(void *);
    LOCALE int                            SDCCommand(void *d);
    LOCALE int                            GSCCommand(void *);
    LOCALE int                            SSCCommand(void *);
-   LOCALE BOOLEAN                        EnvSetDynamicConstraintChecking(void *,int);
-   LOCALE BOOLEAN                        EnvGetDynamicConstraintChecking(void *);
-   LOCALE BOOLEAN                        EnvSetStaticConstraintChecking(void *,int);
-   LOCALE BOOLEAN                        EnvGetStaticConstraintChecking(void *);
+   LOCALE intBool                        EnvSetDynamicConstraintChecking(void *,int);
+   LOCALE intBool                        EnvGetDynamicConstraintChecking(void *);
+   LOCALE intBool                        EnvSetStaticConstraintChecking(void *,int);
+   LOCALE intBool                        EnvGetStaticConstraintChecking(void *);
 #if (! BLOAD_ONLY) && (! RUN_TIME)
-   LOCALE int                            HashConstraint(struct constraintRecord *);
+   LOCALE unsigned long                  HashConstraint(struct constraintRecord *);
    LOCALE struct constraintRecord       *AddConstraint(void *,struct constraintRecord *);
 #endif
 #if (! RUN_TIME)
    LOCALE void                           RemoveConstraint(void *,struct constraintRecord *);
+#endif
+
+#if ALLOW_ENVIRONMENT_GLOBALS
+
+   LOCALE intBool                        SetDynamicConstraintChecking(int);
+   LOCALE intBool                        GetDynamicConstraintChecking(void);
+   LOCALE intBool                        SetStaticConstraintChecking(int);
+   LOCALE intBool                        GetStaticConstraintChecking(void);
+
 #endif
 
 #endif

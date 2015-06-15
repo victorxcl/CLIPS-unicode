@@ -1,7 +1,7 @@
    /*******************************************************/
    /*      "C" Language Integrated Production System      */
    /*                                                     */
-   /*             CLIPS Version 6.21 06/15/03             */
+   /*             CLIPS Version 6.30  08/16/14            */
    /*                                                     */
    /*      CONSTRUCT PROFILING FUNCTIONS HEADER FILE      */
    /*******************************************************/
@@ -15,6 +15,27 @@
 /* Contributing Programmer(s):                               */
 /*                                                           */
 /* Revision History:                                         */
+/*                                                           */
+/*      6.23: Modified OutputProfileInfo to allow a before   */
+/*            and after prefix so that a string buffer does  */
+/*            not need to be created to contain the entire   */
+/*            prefix. This allows a buffer overflow problem  */
+/*            to be corrected. DR0857.                       */
+/*                                                           */
+/*      6.24: Renamed BOOLEAN macro type to intBool.         */
+/*                                                           */
+/*            Added pragmas to remove compilation warnings.  */
+/*                                                           */
+/*            Corrected code to remove run-time program      */
+/*            compiler warnings.                             */
+/*                                                           */
+/*      6.30: Used gensprintf instead of sprintf.            */
+/*                                                           */
+/*            Removed conditional code for unsupported       */
+/*            compilers/operating systems (IBM_TBC).         */
+/*                                                           */
+/*            Added const qualifiers to remove C++           */
+/*            deprecation warnings.                          */
 /*                                                           */
 /*************************************************************/
 
@@ -66,7 +87,7 @@ struct profileFunctionData
    int ProfileUserFunctions;
    int ProfileConstructs;
    struct constructProfileInfo *ActiveProfileFrame;
-   char *OutputString;
+   const char *OutputString;
   };
 
 #define ProfileFunctionData(theEnv) ((struct profileFunctionData *) GetEnvironmentData(theEnv,PROFLFUN_DATA))
@@ -77,7 +98,7 @@ struct profileFunctionData
    LOCALE void                           StartProfile(void *,
                                                       struct profileFrameInfo *,
                                                       struct userData **,
-                                                      BOOLEAN);
+                                                      intBool);
    LOCALE void                           EndProfile(void *,struct profileFrameInfo *);
    LOCALE void                           ProfileResetCommand(void *);
    LOCALE void                           ResetProfileInfo(struct constructProfileInfo *);
@@ -86,11 +107,11 @@ struct profileFunctionData
    LOCALE double                         SetProfilePercentThreshold(void *,double);
    LOCALE double                         GetProfilePercentThresholdCommand(void *);
    LOCALE double                         GetProfilePercentThreshold(void *);
-   LOCALE BOOLEAN                        Profile(void *,char *);
+   LOCALE intBool                        Profile(void *,const char *);
    LOCALE void                           DeleteProfileData(void *,void *);
    LOCALE void                          *CreateProfileData(void *);
-   LOCALE char                          *SetProfileOutputString(void *,char *);
+   LOCALE const char                    *SetProfileOutputString(void *,const char *);
 
-#endif
+#endif /* _H_proflfun */
 
 

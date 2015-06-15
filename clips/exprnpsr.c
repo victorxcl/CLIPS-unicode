@@ -1,7 +1,7 @@
    /*******************************************************/
    /*      "C" Language Integrated Production System      */
    /*                                                     */
-   /*             CLIPS Version 6.20  01/31/02            */
+   /*             CLIPS Version 6.30  02/05/15            */
    /*                                                     */
    /*              EXPRESSION PARSER MODULE               */
    /*******************************************************/
@@ -13,9 +13,30 @@
 /*      Gary D. Riley                                        */
 /*                                                           */
 /* Contributing Programmer(s):                               */
-/*      Brian L. Donnell                                     */
+/*      Brian L. Dantes                                      */
 /*                                                           */
 /* Revision History:                                         */
+/*                                                           */
+/*      6.23: Changed name of variable exp to theExp         */
+/*            because of Unix compiler warnings of shadowed  */
+/*            definitions.                                   */
+/*                                                           */
+/*      6.24: Renamed BOOLEAN macro type to intBool.         */
+/*                                                           */
+/*      6.30: Module specifier can be used within an         */
+/*            expression to refer to a deffunction or        */
+/*            defgeneric exported by the specified module,   */
+/*            but not necessarily imported by the current    */
+/*            module.                                        */
+/*                                                           */
+/*            Added const qualifiers to remove C++           */
+/*            deprecation warnings.                          */
+/*                                                           */
+/*            Converted API macros to function calls.        */
+/*                                                           */
+/*            Changed find construct functionality so that   */
+/*            imported modules are search when locating a    */
+/*            named construct.                               */
 /*                                                           */
 /*************************************************************/
 
@@ -63,7 +84,7 @@
 /***************************************************/
 globle struct expr *Function0Parse(
   void *theEnv,
-  char *logicalName)
+  const char *logicalName)
   {
    struct token theToken;
    struct expr *top;
@@ -93,7 +114,7 @@ globle struct expr *Function0Parse(
 /*******************************************************/
 globle struct expr *Function1Parse(
   void *theEnv,
-  char *logicalName)
+  const char *logicalName)
   {
    struct token theToken;
    struct expr *top;
@@ -125,11 +146,14 @@ globle struct expr *Function1Parse(
 /****************************************************/
 globle struct expr *Function2Parse(
   void *theEnv,
-  char *logicalName,
-  char *name)
+  const char *logicalName,
+  const char *name)
   {
    struct FunctionDefinition *theFunction;
    struct expr *top;
+   int moduleSpecified = FALSE;
+   unsigned position;
+   struct symbolHashNode *moduleName = NULL, *constructName = NULL;
 #if DEFGENERIC_CONSTRUCT
    void *gfunc;
 #endif
@@ -141,10 +165,11 @@ globle struct expr *Function2Parse(
    /* Module specification cannot be used in a function call. */
    /*=========================================================*/
 
-   if (FindModuleSeparator(name))
-     {
-      IllegalModuleSpecifierMessage(theEnv);
-      return(NULL);
+   if ((position = FindModuleSeparator(name)) != FALSE)
+     { 
+      moduleName = ExtractModuleName(theEnv,position,name);
+      constructName = ExtractConstructName(theEnv,position,name);
+      moduleSpecified = TRUE; 
      }
 
    /*================================*/
@@ -154,16 +179,35 @@ globle struct expr *Function2Parse(
    theFunction = FindFunction(theEnv,name);
 
 #if DEFGENERIC_CONSTRUCT
-   gfunc = (void *) LookupDefgenericInScope(theEnv,name);
+   if (moduleSpecified)
+     { 
+      if (ConstructExported(theEnv,"defgeneric",moduleName,constructName) ||
+          EnvGetCurrentModule(theEnv) == EnvFindDefmodule(theEnv,ValueToString(moduleName)))
+        { gfunc = (void *) EnvFindDefgenericInModule(theEnv,name); }
+      else
+        { gfunc = NULL; }
+     }
+   else
+     { gfunc = (void *) LookupDefgenericInScope(theEnv,name); }
 #endif
 
 #if DEFFUNCTION_CONSTRUCT
-   if ((theFunction == NULL)
 #if DEFGENERIC_CONSTRUCT
-        && (gfunc == NULL)
+   if ((theFunction == NULL)
+        && (gfunc == NULL))
+#else
+   if (theFunction == NULL)
 #endif
-     )
-     dptr = (void *) LookupDeffunctionInScope(theEnv,name);
+     if (moduleSpecified)
+       { 
+        if (ConstructExported(theEnv,"deffunction",moduleName,constructName) ||
+            EnvGetCurrentModule(theEnv) == EnvFindDefmodule(theEnv,ValueToString(moduleName)))
+          { dptr = (void *) EnvFindDeffunctionInModule(theEnv,name); }
+        else
+          { dptr = NULL; }
+       }
+     else
+       { dptr = (void *) LookupDeffunctionInScope(theEnv,name); }
    else
      dptr = NULL;
 #endif
@@ -294,14 +338,14 @@ globle struct expr *Function2Parse(
                    refernce (i.e. ? instead of $? - the $ is
                    being treated as a special expansion operator)
  **********************************************************************/
-globle BOOLEAN ReplaceSequenceExpansionOps(
+globle intBool ReplaceSequenceExpansionOps(
   void *theEnv,
   EXPRESSION *actions,
   EXPRESSION *fcallexp,
   void *expcall,
   void *expmult)
   {
-   EXPRESSION *exp;
+   EXPRESSION *theExp;
 
    while (actions != NULL)
      {
@@ -322,19 +366,19 @@ globle BOOLEAN ReplaceSequenceExpansionOps(
            }
          if (fcallexp->value != expcall)
            {
-            exp = GenConstant(theEnv,fcallexp->type,fcallexp->value);
-            exp->argList = fcallexp->argList;
-            exp->nextArg = NULL;
+            theExp = GenConstant(theEnv,fcallexp->type,fcallexp->value);
+            theExp->argList = fcallexp->argList;
+            theExp->nextArg = NULL;
             fcallexp->type = FCALL;
             fcallexp->value = expcall;
-            fcallexp->argList = exp;
+            fcallexp->argList = theExp;
            }
          if (actions->value != expmult)
            {
-            exp = GenConstant(theEnv,SF_VARIABLE,actions->value);
+            theExp = GenConstant(theEnv,SF_VARIABLE,actions->value);
             if (actions->type == MF_GBL_VARIABLE)
-              exp->type = GBL_VARIABLE;
-            actions->argList = exp;
+              theExp->type = GBL_VARIABLE;
+            actions->argList = theExp;
             actions->type = FCALL;
             actions->value = expmult;
            }
@@ -344,10 +388,10 @@ globle BOOLEAN ReplaceSequenceExpansionOps(
          if ((actions->type == GCALL) ||
              (actions->type == PCALL) ||
              (actions->type == FCALL))
-           exp = actions;
+           theExp = actions;
          else
-           exp = fcallexp;
-         if (ReplaceSequenceExpansionOps(theEnv,actions->argList,exp,expcall,expmult))
+           theExp = fcallexp;
+         if (ReplaceSequenceExpansionOps(theEnv,actions->argList,theExp,expcall,expmult))
            return(TRUE);
         }
       actions = actions->nextArg;
@@ -396,8 +440,8 @@ globle void PopRtnBrkContexts(
 globle int CheckExpressionAgainstRestrictions(
   void *theEnv,
   struct expr *theExpression,
-  char *restrictions,
-  char *functionName)
+  const char *restrictions,
+  const char *functionName)
   {
    char theChar[2];
    int i = 0, j = 1;
@@ -524,7 +568,7 @@ globle int CheckExpressionAgainstRestrictions(
 globle struct expr *CollectArguments(
   void *theEnv,
   struct expr *top,
-  char *logicalName)
+  const char *logicalName)
   {
    int errorFlag;
    struct expr *lastOne, *nextOne;
@@ -571,7 +615,7 @@ globle struct expr *CollectArguments(
 /********************************************/
 globle struct expr *ArgumentParse(
   void *theEnv,
-  char *logicalName,
+  const char *logicalName,
   int *errorFlag)
   {
    struct expr *top;
@@ -630,7 +674,7 @@ globle struct expr *ArgumentParse(
 /************************************************************/
 globle struct expr *ParseAtomOrExpression(
   void *theEnv,
-  char *logicalName,
+  const char *logicalName,
   struct token *useToken)
   {
    struct token theToken, *thisToken;
@@ -676,10 +720,10 @@ globle struct expr *ParseAtomOrExpression(
 /*********************************************/
 globle struct expr *GroupActions(
   void *theEnv,
-  char *logicalName,
+  const char *logicalName,
   struct token *theToken,
   int readFirstToken,
-  char *endWord,
+  const char *endWord,
   int functionNameParsed)
   {
    struct expr *top, *nextOne, *lastOne = NULL;
@@ -801,7 +845,7 @@ globle struct expr *GroupActions(
 /* EnvSetSequenceOperatorRecognition: C access routine  */
 /*   for the set-sequence-operator-recognition function */
 /********************************************************/
-globle BOOLEAN EnvSetSequenceOperatorRecognition(
+globle intBool EnvSetSequenceOperatorRecognition(
   void *theEnv,
   int value)
   {
@@ -816,7 +860,7 @@ globle BOOLEAN EnvSetSequenceOperatorRecognition(
 /* EnvSetSequenceOperatorRecognition: C access routine  */
 /*   for the Get-sequence-operator-recognition function */
 /********************************************************/
-globle BOOLEAN EnvGetSequenceOperatorRecognition(
+globle intBool EnvGetSequenceOperatorRecognition(
   void *theEnv)
   {
    return(ExpressionData(theEnv)->SequenceOpMode);
@@ -828,11 +872,11 @@ globle BOOLEAN EnvGetSequenceOperatorRecognition(
 /*******************************************/
 globle EXPRESSION *ParseConstantArguments(
   void *theEnv,
-  char *argstr,
+  const char *argstr,
   int *error)
   {
    EXPRESSION *top = NULL,*bot = NULL,*tmp;
-   char *router = "***FNXARGS***";
+   const char *router = "***FNXARGS***";
    struct token tkn;
 
    *error = FALSE;
@@ -922,3 +966,23 @@ globle struct expr *RemoveUnneededProgn(
 
    return(theExpression);
   }
+
+/*#####################################*/
+/* ALLOW_ENVIRONMENT_GLOBALS Functions */
+/*#####################################*/
+
+#if ALLOW_ENVIRONMENT_GLOBALS
+
+globle intBool SetSequenceOperatorRecognition(
+  int value)
+  {
+   return EnvSetSequenceOperatorRecognition(GetCurrentEnvironment(),value);
+  }
+
+globle intBool GetSequenceOperatorRecognition()
+  {
+   return EnvGetSequenceOperatorRecognition(GetCurrentEnvironment());
+  }
+
+#endif /* ALLOW_ENVIRONMENT_GLOBALS */
+

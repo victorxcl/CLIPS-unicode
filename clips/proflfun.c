@@ -1,7 +1,7 @@
    /*******************************************************/
    /*      "C" Language Integrated Production System      */
    /*                                                     */
-   /*             CLIPS Version 6.21  06/15/03            */
+   /*             CLIPS Version 6.30  08/22/14            */
    /*                                                     */
    /*         CONSTRUCT PROFILING FUNCTIONS MODULE        */
    /*******************************************************/
@@ -16,6 +16,27 @@
 /* Contributing Programmer(s):                               */
 /*                                                           */
 /* Revision History:                                         */
+/*                                                           */
+/*      6.23: Modified OutputProfileInfo to allow a before   */
+/*            and after prefix so that a string buffer does  */
+/*            not need to be created to contain the entire   */
+/*            prefix. This allows a buffer overflow problem  */
+/*            to be corrected. DR0857.                       */
+/*                                                           */
+/*      6.24: Renamed BOOLEAN macro type to intBool.         */
+/*                                                           */
+/*            Added pragmas to remove compilation warnings.  */
+/*                                                           */
+/*            Corrected code to remove run-time program      */
+/*            compiler warnings.                             */
+/*                                                           */
+/*      6.30: Used gensprintf instead of sprintf.            */
+/*                                                           */
+/*            Removed conditional code for unsupported       */
+/*            compilers/operating systems (IBM_TBC).         */
+/*                                                           */
+/*            Added const qualifiers to remove C++           */
+/*            deprecation warnings.                          */
 /*                                                           */
 /*************************************************************/
 
@@ -51,10 +72,13 @@
 /* LOCAL INTERNAL FUNCTION DEFINITIONS */
 /***************************************/
 
-   static BOOLEAN                     OutputProfileInfo(void *,char *,struct constructProfileInfo *,char *,char **);
+   static intBool                     OutputProfileInfo(void *,const char *,struct constructProfileInfo *,
+                                                        const char *,const char *,const char *,const char **);
    static void                        OutputUserFunctionsInfo(void *);
    static void                        OutputConstructsCodeInfo(void *);
+#if (! RUN_TIME)
    static void                        ProfileClearFunction(void *);
+#endif
 
 /******************************************************/
 /* ConstructProfilingFunctionDefinitions: Initializes */
@@ -129,7 +153,7 @@ globle void DeleteProfileData(
 globle void ProfileCommand(
   void *theEnv)
   {
-   char *argument;
+   const char *argument;
    DATA_OBJECT theValue;
 
    if (EnvArgCountCheck(theEnv,"profile",EXACTLY,1) == -1) return;
@@ -150,9 +174,9 @@ globle void ProfileCommand(
 /* Profile: C access routine  */
 /*   for the profile command. */
 /******************************/
-globle BOOLEAN Profile(
+globle intBool Profile(
   void *theEnv,
-  char *argument)
+  const char *argument)
   {
    /*======================================================*/
    /* If the argument is the symbol "user-functions", then */
@@ -247,7 +271,7 @@ globle void ProfileInfoCommand(
       
    if (ProfileFunctionData(theEnv)->LastProfileInfo != NO_PROFILE)
      {
-      sprintf(buffer,"Profile elapsed time = %g seconds\n",
+      gensprintf(buffer,"Profile elapsed time = %g seconds\n",
                       ProfileFunctionData(theEnv)->ProfileTotalTime);
       EnvPrintRouter(theEnv,WDISPLAY,buffer);
 
@@ -278,7 +302,7 @@ globle void StartProfile(
   void *theEnv,
   struct profileFrameInfo *theFrame,
   struct userData **theList,
-  BOOLEAN checkFlag)
+  intBool checkFlag)
   {
    double startTime, addTime;
    struct constructProfileInfo *profileInfo;
@@ -349,12 +373,14 @@ globle void EndProfile(
 /* OutputProfileInfo: Prints out a single */
 /*   line of profile information.         */
 /******************************************/
-static BOOLEAN OutputProfileInfo(
+static intBool OutputProfileInfo(
   void *theEnv,
-  char *itemName,
+  const char *itemName,
   struct constructProfileInfo *profileInfo,
-  char *printPrefix,
-  char **banner)
+  const char *printPrefixBefore,
+  const char *printPrefix,
+  const char *printPrefixAfter,
+  const char **banner)
   {
    double percent = 0.0, percentWithKids = 0.0;
    char buffer[512];
@@ -378,9 +404,15 @@ static BOOLEAN OutputProfileInfo(
       EnvPrintRouter(theEnv,WDISPLAY,*banner);
       *banner = NULL;
      }
+
+   if (printPrefixBefore != NULL)
+     { EnvPrintRouter(theEnv,WDISPLAY,printPrefixBefore); }
    
    if (printPrefix != NULL)
      { EnvPrintRouter(theEnv,WDISPLAY,printPrefix); }
+
+   if (printPrefixAfter != NULL)
+     { EnvPrintRouter(theEnv,WDISPLAY,printPrefixAfter); }
 
    if (strlen(itemName) >= 40)
      {
@@ -389,7 +421,7 @@ static BOOLEAN OutputProfileInfo(
       itemName = "";
      }
 
-   sprintf(buffer,ProfileFunctionData(theEnv)->OutputString,
+   gensprintf(buffer,ProfileFunctionData(theEnv)->OutputString,
                         itemName,
                         (long) profileInfo->numberOfEntries,
 
@@ -541,8 +573,9 @@ static void OutputUserFunctionsInfo(
      {
       OutputProfileInfo(theEnv,ValueToString(theFunction->callFunctionName),
                         (struct constructProfileInfo *) 
-                           TestUserData(ProfileFunctionData(theEnv)->ProfileDataID,theFunction->usrData),
-                        NULL,NULL);
+                           TestUserData(ProfileFunctionData(theEnv)->ProfileDataID,
+                        theFunction->usrData),
+                        NULL,NULL,NULL,NULL);
      }
 
    for (i = 0; i < MAXIMUM_PRIMITIVES; i++)
@@ -551,8 +584,9 @@ static void OutputUserFunctionsInfo(
         {
          OutputProfileInfo(theEnv,EvaluationData(theEnv)->PrimitivesArray[i]->name,
                            (struct constructProfileInfo *)
-                              TestUserData(ProfileFunctionData(theEnv)->ProfileDataID,EvaluationData(theEnv)->PrimitivesArray[i]->usrData),
-                           NULL,NULL);
+                              TestUserData(ProfileFunctionData(theEnv)->ProfileDataID,
+                           EvaluationData(theEnv)->PrimitivesArray[i]->usrData),
+                           NULL,NULL,NULL,NULL);
         }
      }
   }
@@ -563,6 +597,9 @@ static void OutputUserFunctionsInfo(
 static void OutputConstructsCodeInfo(
   void *theEnv)
   {
+#if (! DEFFUNCTION_CONSTRUCT) && (! DEFGENERIC_CONSTRUCT) && (! OBJECT_SYSTEM) && (! DEFRULE_CONSTRUCT)
+#pragma unused(theEnv)
+#endif
 #if DEFFUNCTION_CONSTRUCT
    DEFFUNCTION *theDeffunction;
 #endif
@@ -580,9 +617,10 @@ static void OutputConstructsCodeInfo(
    HANDLER *theHandler;
    unsigned handlerIndex;
 #endif
-   char buffer[512];
-   char *prefix;
-   char *banner;
+#if DEFGENERIC_CONSTRUCT || OBJECT_SYSTEM
+   const char *prefix, *prefixBefore, *prefixAfter;
+#endif
+   const char *banner;
 
    banner = "\n*** Deffunctions ***\n\n";
 
@@ -594,7 +632,7 @@ static void OutputConstructsCodeInfo(
       OutputProfileInfo(theEnv,EnvGetDeffunctionName(theEnv,theDeffunction),
                         (struct constructProfileInfo *) 
                           TestUserData(ProfileFunctionData(theEnv)->ProfileDataID,theDeffunction->header.usrData),
-                        NULL,&banner);
+                        NULL,NULL,NULL,&banner);
      }
 #endif
 
@@ -604,8 +642,9 @@ static void OutputConstructsCodeInfo(
         theDefgeneric != NULL;
         theDefgeneric = (DEFGENERIC *) EnvGetNextDefgeneric(theEnv,theDefgeneric))
      {
-      sprintf(buffer,"\n%s\n",EnvGetDefgenericName(theEnv,theDefgeneric));
-      prefix = buffer;
+      prefixBefore = "\n";
+      prefix = EnvGetDefgenericName(theEnv,theDefgeneric);
+      prefixAfter = "\n";
 
       for (methodIndex = EnvGetNextDefmethod(theEnv,theDefgeneric,0);
            methodIndex != 0;
@@ -617,8 +656,12 @@ static void OutputConstructsCodeInfo(
          if (OutputProfileInfo(theEnv,methodBuffer,
                                (struct constructProfileInfo *) 
                                   TestUserData(ProfileFunctionData(theEnv)->ProfileDataID,theMethod->usrData),
-                               prefix,&banner))
-           { prefix = NULL; }
+                               prefixBefore,prefix,prefixAfter,&banner))
+           {
+            prefixBefore = NULL; 
+            prefix = NULL; 
+            prefixAfter = NULL;
+           }
         }
      }
 #endif
@@ -629,8 +672,10 @@ static void OutputConstructsCodeInfo(
         theDefclass != NULL;
         theDefclass = (DEFCLASS *) EnvGetNextDefclass(theEnv,theDefclass))
      {
-      sprintf(buffer,"\n%s\n",EnvGetDefclassName(theEnv,theDefclass));
-      prefix = buffer;
+      prefixAfter = "\n";
+      prefix = EnvGetDefclassName(theEnv,theDefclass);
+      prefixBefore = "\n";
+      
       for (handlerIndex = EnvGetNextDefmessageHandler(theEnv,theDefclass,0);
            handlerIndex != 0;
            handlerIndex = EnvGetNextDefmessageHandler(theEnv,theDefclass,handlerIndex))
@@ -638,14 +683,18 @@ static void OutputConstructsCodeInfo(
          theHandler = GetDefmessageHandlerPointer(theDefclass,handlerIndex);
          if (OutputProfileInfo(theEnv,EnvGetDefmessageHandlerName(theEnv,theDefclass,handlerIndex),
                                (struct constructProfileInfo *) 
-                                  TestUserData(ProfileFunctionData(theEnv)->ProfileDataID,theHandler->usrData),
-                           prefix,&banner))
-           { prefix = NULL; }
+                                  TestUserData(ProfileFunctionData(theEnv)->ProfileDataID,
+                               theHandler->usrData),
+                               prefixBefore,prefix,prefixAfter,&banner))
+           {
+            prefixBefore = NULL; 
+            prefix = NULL; 
+            prefixAfter = NULL;
+           }
         }
 
      }
 #endif
-
 
    banner = "\n*** Defrules ***\n\n";
 
@@ -657,7 +706,7 @@ static void OutputConstructsCodeInfo(
       OutputProfileInfo(theEnv,EnvGetDefruleName(theEnv,theDefrule),
                         (struct constructProfileInfo *) 
                           TestUserData(ProfileFunctionData(theEnv)->ProfileDataID,theDefrule->header.usrData),
-                        NULL,&banner);
+                        NULL,NULL,NULL,&banner);
      }
 #endif
 
@@ -739,11 +788,11 @@ globle double GetProfilePercentThreshold(
 /**********************************************************/
 /* SetProfileOutputString: Sets the output string global. */
 /**********************************************************/
-globle char *SetProfileOutputString(
+globle const char *SetProfileOutputString(
   void *theEnv,
-  char *value)
+  const char *value)
   {
-   char *oldOutputString;
+   const char *oldOutputString;
 
    if (value == NULL)
      { return(ProfileFunctionData(theEnv)->OutputString); }
@@ -754,7 +803,8 @@ globle char *SetProfileOutputString(
 
    return(oldOutputString);
   }
-  
+
+#if (! RUN_TIME)  
 /******************************************************************/
 /* ProfileClearFunction: Profiling clear routine for use with the */
 /*   clear command. Removes user data attached to user functions. */
@@ -782,6 +832,7 @@ static void ProfileClearFunction(
         }
      }
   }
-  
+#endif
+
 #endif /* PROFILING_FUNCTIONS */
 

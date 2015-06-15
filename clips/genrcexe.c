@@ -1,7 +1,7 @@
    /*******************************************************/
    /*      "C" Language Integrated Production System      */
    /*                                                     */
-   /*               CLIPS Version 6.20  01/31/02          */
+   /*             CLIPS Version 6.30  08/16/14            */
    /*                                                     */
    /*                                                     */
    /*******************************************************/
@@ -10,11 +10,23 @@
 /* Purpose: Generic Function Execution Routines              */
 /*                                                           */
 /* Principal Programmer(s):                                  */
-/*      Brian L. Donnell                                     */
+/*      Brian L. Dantes                                      */
 /*                                                           */
 /* Contributing Programmer(s):                               */
 /*                                                           */
 /* Revision History:                                         */
+/*      6.23: Correction for FalseSymbol/TrueSymbol. DR0859  */
+/*                                                           */
+/*      6.24: Removed IMPERATIVE_METHODS compilation flag.   */
+/*                                                           */
+/*      6.30: Changed garbage collection algorithm.          */
+/*                                                           */
+/*            Support for long long integers.                */
+/*                                                           */
+/*            Changed integer type/precision.                */
+/*                                                           */
+/*            Added const qualifiers to remove C++           */
+/*            deprecation warnings.                          */
 /*                                                           */
 /*************************************************************/
 
@@ -26,6 +38,8 @@
 #include "setup.h"
 
 #if DEFGENERIC_CONSTRUCT
+
+#include <string.h>
 
 #if OBJECT_SYSTEM
 #include "classcom.h"
@@ -64,8 +78,8 @@
 static DEFMETHOD *FindApplicableMethod(void *,DEFGENERIC *,DEFMETHOD *);
 
 #if DEBUGGING_FUNCTIONS
-static void WatchGeneric(void *,char *);
-static void WatchMethod(void *,char *);
+static void WatchGeneric(void *,const char *);
+static void WatchMethod(void *,const char *);
 #endif
 
 #if OBJECT_SYSTEM
@@ -121,12 +135,20 @@ globle void GenericDispatch(
 #if PROFILING_FUNCTIONS
    struct profileFrameInfo profileFrame;
 #endif
+   struct garbageFrame newGarbageFrame;
+   struct garbageFrame *oldGarbageFrame;
 
    result->type = SYMBOL;
-   result->value = SymbolData(theEnv)->FalseSymbol;
+   result->value = EnvFalseSymbol(theEnv);
    EvaluationData(theEnv)->EvaluationError = FALSE;
    if (EvaluationData(theEnv)->HaltExecution)
      return;
+
+   oldGarbageFrame = UtilityData(theEnv)->CurrentGarbageFrame;
+   memset(&newGarbageFrame,0,sizeof(struct garbageFrame));
+   newGarbageFrame.priorFrame = oldGarbageFrame;
+   UtilityData(theEnv)->CurrentGarbageFrame = &newGarbageFrame;
+
    oldce = ExecutingConstruct(theEnv);
    SetExecutingConstruct(theEnv,TRUE);
    previousGeneric = DefgenericData(theEnv)->CurrentGeneric;
@@ -143,7 +165,10 @@ globle void GenericDispatch(
       DefgenericData(theEnv)->CurrentGeneric = previousGeneric;
       DefgenericData(theEnv)->CurrentMethod = previousMethod;
       EvaluationData(theEnv)->CurrentEvaluationDepth--;
-      PeriodicCleanup(theEnv,FALSE,TRUE);
+      
+      RestorePriorGarbageFrame(theEnv,&newGarbageFrame,oldGarbageFrame,result);
+      CallPeriodicTasks(theEnv);
+     
       SetExecutingConstruct(theEnv,oldce);
       return;
      }
@@ -162,7 +187,7 @@ globle void GenericDispatch(
          EnvPrintRouter(theEnv,WERROR,"Generic function ");
          EnvPrintRouter(theEnv,WERROR,EnvGetDefgenericName(theEnv,(void *) gfunc));
          EnvPrintRouter(theEnv,WERROR," method #");
-         PrintLongInteger(theEnv,WERROR,(long) meth->index);
+         PrintLongInteger(theEnv,WERROR,(long long) meth->index);
          EnvPrintRouter(theEnv,WERROR," is not applicable to the given arguments.\n");
         }
      }
@@ -224,8 +249,10 @@ globle void GenericDispatch(
    DefgenericData(theEnv)->CurrentGeneric = previousGeneric;
    DefgenericData(theEnv)->CurrentMethod = previousMethod;
    EvaluationData(theEnv)->CurrentEvaluationDepth--;
-   PropagateReturnValue(theEnv,result);
-   PeriodicCleanup(theEnv,FALSE,TRUE);
+
+   RestorePriorGarbageFrame(theEnv,&newGarbageFrame,oldGarbageFrame,result);
+   CallPeriodicTasks(theEnv);
+   
    SetExecutingConstruct(theEnv,oldce);
   }
 
@@ -245,7 +272,7 @@ globle void UnboundMethodErr(
    EnvPrintRouter(theEnv,WERROR,"generic function ");
    EnvPrintRouter(theEnv,WERROR,EnvGetDefgenericName(theEnv,(void *) DefgenericData(theEnv)->CurrentGeneric));
    EnvPrintRouter(theEnv,WERROR," method #");
-   PrintLongInteger(theEnv,WERROR,(long) DefgenericData(theEnv)->CurrentMethod->index);
+   PrintLongInteger(theEnv,WERROR,(long long) DefgenericData(theEnv)->CurrentMethod->index);
    EnvPrintRouter(theEnv,WERROR,".\n");
   }
 
@@ -260,12 +287,12 @@ globle void UnboundMethodErr(
   SIDE EFFECTS : Any query functions are evaluated
   NOTES        : Uses globals ProcParamArraySize and ProcParamArray
  ***********************************************************************/
-globle BOOLEAN IsMethodApplicable(
+globle intBool IsMethodApplicable(
   void *theEnv,
   DEFMETHOD *meth)
   {
    DATA_OBJECT temp;
-   register unsigned i,j,k;
+   short i,j,k;
    register RESTRICTION *rp;
 #if OBJECT_SYSTEM
    void *type;
@@ -276,7 +303,7 @@ globle BOOLEAN IsMethodApplicable(
    if ((ProceduralPrimitiveData(theEnv)->ProcParamArraySize < meth->minRestrictions) ||
        ((ProceduralPrimitiveData(theEnv)->ProcParamArraySize > meth->minRestrictions) && (meth->maxRestrictions != -1)))
      return(FALSE);
-   for (i = 0 , k = 0 ; i < (unsigned) ProceduralPrimitiveData(theEnv)->ProcParamArraySize ; i++)
+   for (i = 0 , k = 0 ; i < ProceduralPrimitiveData(theEnv)->ProcParamArraySize ; i++)
      {
       rp = &meth->restrictions[k];
       if (rp->tcnt != 0)
@@ -327,7 +354,7 @@ globle BOOLEAN IsMethodApplicable(
          DefgenericData(theEnv)->GenericCurrentArgument = &ProceduralPrimitiveData(theEnv)->ProcParamArray[i];
          EvaluateExpression(theEnv,rp->query,&temp);
          if ((temp.type != SYMBOL) ? FALSE :
-             (temp.value == SymbolData(theEnv)->FalseSymbol))
+             (temp.value == EnvFalseSymbol(theEnv)))
            return(FALSE);
         }
       if (((int) k) != meth->restrictionCount-1)
@@ -335,8 +362,6 @@ globle BOOLEAN IsMethodApplicable(
      }
    return(TRUE);
   }
-
-#if IMPERATIVE_METHODS
 
 /***************************************************
   NAME         : NextMethodP
@@ -386,7 +411,7 @@ globle void CallNextMethod(
 #endif
 
    result->type = SYMBOL;
-   result->value = SymbolData(theEnv)->FalseSymbol;
+   result->value = EnvFalseSymbol(theEnv);
    if (EvaluationData(theEnv)->HaltExecution)
      return;
    oldMethod = DefgenericData(theEnv)->CurrentMethod;
@@ -462,7 +487,7 @@ globle void CallSpecificMethod(
    int mi;
 
    result->type = SYMBOL;
-   result->value = SymbolData(theEnv)->FalseSymbol;
+   result->value = EnvFalseSymbol(theEnv);
    if (EnvArgTypeCheck(theEnv,"call-specific-method",1,SYMBOL,&temp) == FALSE)
      return;
    gfunc = CheckGenericExists(theEnv,"call-specific-method",DOToString(temp));
@@ -470,7 +495,7 @@ globle void CallSpecificMethod(
      return;
    if (EnvArgTypeCheck(theEnv,"call-specific-method",2,INTEGER,&temp) == FALSE)
      return;
-   mi = CheckMethodExists(theEnv,"call-specific-method",gfunc,DOToInteger(temp));
+   mi = CheckMethodExists(theEnv,"call-specific-method",gfunc,(long) DOToLong(temp));
    if (mi == -1)
      return;
    gfunc->methods[mi].busy++;
@@ -493,7 +518,7 @@ globle void OverrideNextMethod(
   DATA_OBJECT *result)
   {
    result->type = SYMBOL;
-   result->value = SymbolData(theEnv)->FalseSymbol;
+   result->value = EnvFalseSymbol(theEnv);
    if (EvaluationData(theEnv)->HaltExecution)
      return;
    if (DefgenericData(theEnv)->CurrentMethod == NULL)
@@ -506,8 +531,6 @@ globle void OverrideNextMethod(
    GenericDispatch(theEnv,DefgenericData(theEnv)->CurrentGeneric,DefgenericData(theEnv)->CurrentMethod,NULL,
                    GetFirstArgument(),result);
   }
-
-#endif /* IMPERATIVE_METHODS */
 
 /***********************************************************
   NAME         : GetGenericCurrentArgument
@@ -581,7 +604,7 @@ static DEFMETHOD *FindApplicableMethod(
  **********************************************************************/
 static void WatchGeneric(
   void *theEnv,
-  char *tstring)
+  const char *tstring)
   {
    EnvPrintRouter(theEnv,WTRACE,"GNC ");
    EnvPrintRouter(theEnv,WTRACE,tstring);
@@ -595,7 +618,7 @@ static void WatchGeneric(
    EnvPrintRouter(theEnv,WTRACE,ValueToString((void *) DefgenericData(theEnv)->CurrentGeneric->header.name));
    EnvPrintRouter(theEnv,WTRACE," ");
    EnvPrintRouter(theEnv,WTRACE," ED:");
-   PrintLongInteger(theEnv,WTRACE,(long) EvaluationData(theEnv)->CurrentEvaluationDepth);
+   PrintLongInteger(theEnv,WTRACE,(long long) EvaluationData(theEnv)->CurrentEvaluationDepth);
    PrintProcParamArray(theEnv,WTRACE);
   }
 
@@ -613,7 +636,7 @@ static void WatchGeneric(
  **********************************************************************/
 static void WatchMethod(
   void *theEnv,
-  char *tstring)
+  const char *tstring)
   {
    EnvPrintRouter(theEnv,WTRACE,"MTH ");
    EnvPrintRouter(theEnv,WTRACE,tstring);
@@ -628,10 +651,10 @@ static void WatchMethod(
    EnvPrintRouter(theEnv,WTRACE,":#");
    if (DefgenericData(theEnv)->CurrentMethod->system)
      EnvPrintRouter(theEnv,WTRACE,"SYS");
-   PrintLongInteger(theEnv,WTRACE,(long) DefgenericData(theEnv)->CurrentMethod->index);
+   PrintLongInteger(theEnv,WTRACE,(long long) DefgenericData(theEnv)->CurrentMethod->index);
    EnvPrintRouter(theEnv,WTRACE," ");
    EnvPrintRouter(theEnv,WTRACE," ED:");
-   PrintLongInteger(theEnv,WTRACE,(long) EvaluationData(theEnv)->CurrentEvaluationDepth);
+   PrintLongInteger(theEnv,WTRACE,(long long) EvaluationData(theEnv)->CurrentEvaluationDepth);
    PrintProcParamArray(theEnv,WTRACE);
   }
 

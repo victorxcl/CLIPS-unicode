@@ -1,7 +1,7 @@
    /*******************************************************/
    /*      "C" Language Integrated Production System      */
    /*                                                     */
-   /*             CLIPS Version 6.22  06/15/04            */
+   /*             CLIPS Version 6.30  08/16/14            */
    /*                                                     */
    /*           DEFMODULE CONSTRUCTS-TO-C MODULE          */
    /*******************************************************/
@@ -16,6 +16,18 @@
 /* Contributing Programmer(s):                               */
 /*                                                           */
 /* Revision History:                                         */
+/*                                                           */
+/*      6.24: Added environment parameter to GenClose.       */
+/*                                                           */
+/*      6.30: Removed conditional code for unsupported       */
+/*            compilers/operating systems (IBM_MCW,          */
+/*            MAC_MCW, and IBM_TBC).                         */
+/*                                                           */
+/*            Added support for path name argument to        */
+/*            constructs-to-c.                               */
+/*                                                           */
+/*            Added const qualifiers to remove C++           */
+/*            deprecation warnings.                          */
 /*                                                           */
 /*************************************************************/
 
@@ -47,11 +59,11 @@
 /* LOCAL INTERNAL FUNCTION DEFINITIONS */
 /***************************************/
 
-   static int                     ConstructToCode(void *,char *,int,FILE *,int,int);
+   static int                     ConstructToCode(void *,const char *,const char *,char *,int,FILE *,int,int);
    static void                    InitDefmoduleCode(void *,FILE *,int,int);
    static struct portItem        *GetNextPortItem(void *,struct defmodule **,struct portItem **,
                                                   int *,int *);
-   static int                     PortItemsToCode(void *,char *,int,FILE *,int,int,int *);
+   static int                     PortItemsToCode(void *,const char *,const char *,char *,int,FILE *,int,int,int *);
    static void                    BeforeDefmodulesToCode(void *);
 
 /***************************************************************/
@@ -102,16 +114,13 @@ globle void PrintDefmoduleReference(
 /* InitDefmoduleCode: Writes out initialization */
 /*   code for defmodules for a run-time module. */
 /************************************************/
-#if IBM_TBC
-#pragma argsused
-#endif
 static void InitDefmoduleCode(
   void *theEnv,
   FILE *initFP,
   int imageID,
   int maxIndices)
   {
-#if MAC_MCW || IBM_MCW
+#if MAC_XCD
 #pragma unused(maxIndices)
 #endif
 
@@ -128,7 +137,9 @@ static void InitDefmoduleCode(
 /***********************************************************/
 static int ConstructToCode(
   void *theEnv,
-  char *fileName,
+  const char *fileName,
+  const char *pathName,
+  char *fileNameBuffer,
   int fileID,
   FILE *headerFP,
   int imageID,
@@ -156,7 +167,7 @@ static int ConstructToCode(
    /* the maximum number of indices is ignored.  */
    /*============================================*/
 
-   if ((itemsFile = NewCFile(theEnv,fileName,fileID,1,FALSE)) == NULL)
+   if ((itemsFile = NewCFile(theEnv,fileName,pathName,fileNameBuffer,fileID,1,FALSE)) == NULL)
      { return(FALSE); }
    fprintf(itemsFile,"struct defmoduleItemHeader *%s%d_%d[] = {\n",ItemPrefix(),imageID,1);
    fprintf(headerFP,"extern struct defmoduleItemHeader *%s%d_%d[];\n",ItemPrefix(),imageID,1);
@@ -174,7 +185,7 @@ static int ConstructToCode(
       /* Open a new file to write to if necessary. */
       /*===========================================*/
 
-      moduleFile = OpenFileIfNeeded(theEnv,moduleFile,fileName,fileID,imageID,
+      moduleFile = OpenFileIfNeeded(theEnv,moduleFile,fileName,pathName,fileNameBuffer,fileID,imageID,
                                     &fileCount,moduleArrayVersion,headerFP,
                                     "struct defmodule",DefmodulePrefix(),
                                     FALSE,NULL);
@@ -184,7 +195,7 @@ static int ConstructToCode(
          moduleCount = maxIndices;
          CloseFileIfNeeded(theEnv,moduleFile,&moduleCount,
                            &moduleArrayVersion,maxIndices,NULL,NULL);
-         GenClose(itemsFile);
+         GenClose(theEnv,itemsFile);
          return(FALSE);
         }
 
@@ -294,14 +305,14 @@ static int ConstructToCode(
    CloseFileIfNeeded(theEnv,moduleFile,&moduleCount,
                      &moduleArrayVersion,maxIndices,NULL,NULL);
    fprintf(itemsFile,"};\n");
-   GenClose(itemsFile);
+   GenClose(theEnv,itemsFile);
 
    /*=========================================*/
    /* Write out the portItem data structures. */
    /*=========================================*/
 
    if (portItemCount == 0) return(TRUE);
-   return(PortItemsToCode(theEnv,fileName,fileID,headerFP,imageID,maxIndices,&fileCount));
+   return(PortItemsToCode(theEnv,fileName,pathName,fileNameBuffer,fileID,headerFP,imageID,maxIndices,&fileCount));
   }
 
 /************************************************************/
@@ -310,7 +321,9 @@ static int ConstructToCode(
 /************************************************************/
 static int PortItemsToCode(
   void *theEnv,
-  char *fileName,
+  const char *fileName,
+  const char *pathName,
+  char *fileNameBuffer,
   int fileID,
   FILE *headerFP,
   int imageID,
@@ -338,7 +351,7 @@ static int PortItemsToCode(
       /* Open a new file to write to if necessary. */
       /*===========================================*/
 
-      portItemsFile = OpenFileIfNeeded(theEnv,portItemsFile,fileName,fileID,imageID,
+      portItemsFile = OpenFileIfNeeded(theEnv,portItemsFile,fileName,pathName,fileNameBuffer,fileID,imageID,
                                        fileCount,portItemArrayVersion,headerFP,
                                        "struct portItem",PortPrefix(),
                                        FALSE,NULL);

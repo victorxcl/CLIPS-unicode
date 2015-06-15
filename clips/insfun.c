@@ -1,7 +1,7 @@
    /*******************************************************/
    /*      "C" Language Integrated Production System      */
    /*                                                     */
-   /*              CLIPS Version 6.22  06/15/04           */
+   /*              CLIPS Version 6.30  02/05/15           */
    /*                                                     */
    /*                INSTANCE FUNCTIONS MODULE            */
    /*******************************************************/
@@ -10,12 +10,54 @@
 /* Purpose:  Internal instance manipulation routines         */
 /*                                                           */
 /* Principal Programmer(s):                                  */
-/*      Brian L. Donnell                                     */
+/*      Brian L. Dantes                                      */
 /*                                                           */
 /* Contributing Programmer(s):                               */
 /*                                                           */
 /*                                                           */
 /* Revision History:                                         */
+/*                                                           */
+/*      6.23: Correction for FalseSymbol/TrueSymbol. DR0859  */
+/*                                                           */
+/*            Changed name of variable log to logName        */
+/*            because of Unix compiler warnings of shadowed  */
+/*            definitions.                                   */
+/*                                                           */
+/*            Changed name of variable exp to theExp         */
+/*            because of Unix compiler warnings of shadowed  */
+/*            definitions.                                   */
+/*                                                           */
+/*      6.24: Link error occurs for the SlotExistError       */
+/*            function when OBJECT_SYSTEM is set to 0 in     */
+/*            setup.h. DR0865                                */
+/*                                                           */
+/*            Converted INSTANCE_PATTERN_MATCHING to         */
+/*            DEFRULE_CONSTRUCT.                             */
+/*                                                           */
+/*            Renamed BOOLEAN macro type to intBool.         */
+/*                                                           */
+/*            Moved EvaluateAndStoreInDataObject to          */
+/*            evaluatn.c                                     */
+/*                                                           */
+/*      6.30: Removed conditional code for unsupported       */
+/*            compilers/operating systems (IBM_MCW,          */
+/*            MAC_MCW, and IBM_TBC).                         */
+/*                                                           */
+/*            Changed integer type/precision.                */
+/*                                                           */
+/*            Changed garbage collection algorithm.          */
+/*                                                           */
+/*            Support for long long integers.                */
+/*                                                           */
+/*            Added const qualifiers to remove C++           */
+/*            deprecation warnings.                          */
+/*                                                           */
+/*            Converted API macros to function calls.        */
+/*                                                           */
+/*            Fixed slot override default ?NONE bug.         */
+/*                                                           */
+/*            Instances of the form [<name>] are now         */
+/*            searched for in all modules.                   */
 /*                                                           */
 /*************************************************************/
 
@@ -47,7 +89,7 @@
 #include "router.h"
 #include "utility.h"
 
-#if INSTANCE_PATTERN_MATCHING
+#if DEFRULE_CONSTRUCT
 #include "drive.h"
 #include "objrtmch.h"
 #endif
@@ -70,7 +112,7 @@
 
 static INSTANCE_TYPE *FindImportedInstance(void *,struct defmodule *,struct defmodule *,INSTANCE_TYPE *);
 
-#if INSTANCE_PATTERN_MATCHING
+#if DEFRULE_CONSTRUCT
 static void NetworkModifyForSharedSlot(void *,int,DEFCLASS *,SLOT_DESC *);
 #endif
 
@@ -89,14 +131,11 @@ static void NetworkModifyForSharedSlot(void *,int,DEFCLASS *,SLOT_DESC *);
   SIDE EFFECTS : Count set
   NOTES        : None
  ***************************************************/
-#if IBM_TBC
-#pragma argsused
-#endif
 globle void EnvIncrementInstanceCount(
   void *theEnv,
   void *vptr)
   {
-#if MAC_MCW || IBM_MCW
+#if MAC_XCD
 #pragma unused(theEnv)
 #endif
 
@@ -112,14 +151,11 @@ globle void EnvIncrementInstanceCount(
   SIDE EFFECTS : Count set
   NOTES        : None
  ***************************************************/
-#if IBM_TBC
-#pragma argsused
-#endif
 globle void EnvDecrementInstanceCount(
   void *theEnv,
   void *vptr)
   {
-#if MAC_MCW || IBM_MCW
+#if MAC_XCD
 #pragma unused(theEnv)
 #endif
 
@@ -168,14 +204,13 @@ globle void CleanupInstances(
    gtmp = InstanceData(theEnv)->InstanceGarbageList;
    while (gtmp != NULL)
      {
-      if ((gtmp->ins->busy == 0) && (gtmp->ins->depth > EvaluationData(theEnv)->CurrentEvaluationDepth)
-#if INSTANCE_PATTERN_MATCHING
-          && (gtmp->ins->header.busyCount == 0)
+#if DEFRULE_CONSTRUCT
+      if ((gtmp->ins->busy == 0)
+          && (gtmp->ins->header.busyCount == 0))
+#else
+      if (gtmp->ins->busy == 0)
 #endif
-         )
         {
-         UtilityData(theEnv)->EphemeralItemCount -= 2;
-         UtilityData(theEnv)->EphemeralItemSize -= InstanceSizeHeuristic(gtmp->ins) + sizeof(IGARBAGE);
          DecrementSymbolCount(theEnv,gtmp->ins->name);
          rtn_struct(theEnv,instance,gtmp->ins);
          if (gprv == NULL)
@@ -265,7 +300,7 @@ globle void RemoveInstanceData(
   void *theEnv,
   INSTANCE_TYPE *ins)
   {
-   register unsigned i;
+   long i;
    INSTANCE_SLOT *sp;
 
    DecrementDefclassBusyCount(theEnv,(void *) ins->cls);
@@ -305,7 +340,9 @@ globle void RemoveInstanceData(
   SIDE EFFECTS : None
   NOTES        : An instance is searched for by name first in the
                  current module - then in imported modules according
-                 to the order given in the current module's definition
+                 to the order given in the current module's definition.
+                 Instances of the form [<name>] are now searched for in
+                 all modules.
  ***************************************************************************/
 globle INSTANCE_TYPE *FindInstanceBySymbol(
   void *theEnv,
@@ -324,9 +361,21 @@ globle INSTANCE_TYPE *FindInstanceBySymbol(
    modulePosition = FindModuleSeparator(ValueToString(moduleAndInstanceName));
    if (modulePosition == FALSE)
      {
+      /*
       theModule = currentModule;
       instanceName = moduleAndInstanceName;
       searchImports = FALSE;
+      */
+      INSTANCE_TYPE *ins;
+
+      ins = InstanceData(theEnv)->InstanceTable[HashInstance(moduleAndInstanceName)];
+      while (ins != NULL)
+        {
+         if (ins->name == moduleAndInstanceName)
+           { return ins; }
+         ins = ins->nxtHash;
+        }
+      return(NULL);
      }
 
    /* =========================================
@@ -372,7 +421,9 @@ globle INSTANCE_TYPE *FindInstanceBySymbol(
                     given module as well
   RETURNS      : The instance (NULL if none found)
   SIDE EFFECTS : None
-  NOTES        : None
+  NOTES        : The class no longer needs to be in
+                 scope of the current module if the
+                 instance's module name has been specified.
  ***************************************************/
 globle INSTANCE_TYPE *FindInstanceInModule(
   void *theEnv,
@@ -407,8 +458,9 @@ globle INSTANCE_TYPE *FindInstanceInModule(
    for (ins = startInstance ;
         (ins != NULL) ? (ins->name == startInstance->name) : FALSE ;
         ins = ins->nxtHash)
-     if ((ins->cls->header.whichModule->theModule == theModule) &&
-          DefclassInScope(theEnv,ins->cls,currentModule))
+     //if ((ins->cls->header.whichModule->theModule == theModule) &&
+     //     DefclassInScope(theEnv,ins->cls,currentModule))
+     if (ins->cls->header.whichModule->theModule == theModule)
        return(ins);
 
    /* ================================
@@ -467,40 +519,6 @@ globle int FindInstanceTemplateSlot(
    return((int) cls->slotNameMap[sid] - 1);
   }
 
-/***********************************************************
-  NAME         : EvaluateAndStoreInDataObject
-  DESCRIPTION  : Evaluates slot-value expressions
-                   and stores the result in a
-                   Kernel data object
-  INPUTS       : 1) Flag indicating if multifields are OK
-                 2) The value-expression
-                 3) The data object structure
-  RETURNS      : FALSE on errors, TRUE otherwise
-  SIDE EFFECTS : Segment allocated for storing
-                 multifield values
-  NOTES        : None
- ***********************************************************/
-globle int EvaluateAndStoreInDataObject(
-  void *theEnv,
-  int mfp,
-  EXPRESSION *exp,
-  DATA_OBJECT *val)
-  {
-   val->type = MULTIFIELD;
-   val->begin = 0;
-   val->end = -1;
-   if (exp == NULL)
-     {
-      val->value = EnvCreateMultifield(theEnv,0L);
-      return(TRUE);
-     }
-   if ((mfp == 0) && (exp->nextArg == NULL))
-     EvaluateExpression(theEnv,exp,val);
-   else
-     StoreInMultifield(theEnv,val,exp,TRUE);
-   return(EvaluationData(theEnv)->EvaluationError ? FALSE : TRUE);
-  }
-
 /*******************************************************
   NAME         : PutSlotValue
   DESCRIPTION  : Evaluates new slot-expression and
@@ -525,12 +543,12 @@ globle int PutSlotValue(
   INSTANCE_SLOT *sp,
   DATA_OBJECT *val,
   DATA_OBJECT *setVal,
-  char *theCommand)
+  const char *theCommand)
   {
    if (ValidSlotValue(theEnv,val,sp->desc,ins,theCommand) == FALSE)
      {
       SetpType(setVal,SYMBOL);
-      SetpValue(setVal,SymbolData(theEnv)->FalseSymbol);
+      SetpValue(setVal,EnvFalseSymbol(theEnv));
       return(FALSE);
      }
    return(DirectPutSlotValue(theEnv,ins,sp,val,setVal));
@@ -561,14 +579,14 @@ globle int DirectPutSlotValue(
   DATA_OBJECT *setVal)
   {
    register long i,j; /* 6.04 Bug Fix */
-#if INSTANCE_PATTERN_MATCHING
+#if DEFRULE_CONSTRUCT
    int sharedTraversalID;
    INSTANCE_SLOT *bsp,**spaddr;
 #endif
    DATA_OBJECT tmpVal;
 
    SetpType(setVal,SYMBOL);
-   SetpValue(setVal,SymbolData(theEnv)->FalseSymbol);
+   SetpValue(setVal,EnvFalseSymbol(theEnv));
    if (val == NULL)
      {
       SystemError(theEnv,"INSFUN",1);
@@ -580,13 +598,24 @@ globle int DirectPutSlotValue(
         {
          val = &tmpVal;
          if (!EvaluateAndStoreInDataObject(theEnv,sp->desc->multiple,
-                                           (EXPRESSION *) sp->desc->defaultValue,val))
+                                           (EXPRESSION *) sp->desc->defaultValue,val,TRUE))
            return(FALSE);
         }
+      else if (sp->desc->defaultValue != NULL)
+        { val = (DATA_OBJECT *) sp->desc->defaultValue; }
       else
-        val = (DATA_OBJECT *) sp->desc->defaultValue;
+        {
+         PrintErrorID(theEnv,"INSMNGR",14,FALSE);
+         EnvPrintRouter(theEnv,WERROR,"Override required for slot ");
+         EnvPrintRouter(theEnv,WERROR,ValueToString(sp->desc->slotName->name));
+         EnvPrintRouter(theEnv,WERROR," in instance ");
+         EnvPrintRouter(theEnv,WERROR,ValueToString(ins->name));
+         EnvPrintRouter(theEnv,WERROR,".\n");
+         SetEvaluationError(theEnv,TRUE);
+         return(FALSE);
+        }
      }
-#if INSTANCE_PATTERN_MATCHING
+#if DEFRULE_CONSTRUCT
    if (EngineData(theEnv)->JoinOperationInProgress && sp->desc->reactive &&
        (ins->cls->reactive || sp->desc->shared))
      {
@@ -696,7 +725,7 @@ globle int DirectPutSlotValue(
 #endif
    InstanceData(theEnv)->ChangesToInstances = TRUE;
 
-#if INSTANCE_PATTERN_MATCHING
+#if DEFRULE_CONSTRUCT
    if (ins->cls->reactive && sp->desc->reactive)
      {
       /* ============================================
@@ -750,7 +779,7 @@ globle int ValidSlotValue(
   DATA_OBJECT *val,
   SLOT_DESC *sd,
   INSTANCE_TYPE *ins,
-  char *theCommand)
+  const char *theCommand)
   {
    register int violationCode;
 
@@ -814,7 +843,7 @@ globle int ValidSlotValue(
  ********************************************************/
 globle INSTANCE_TYPE *CheckInstance(
   void *theEnv,
-  char *func)
+  const char *func)
   {
    INSTANCE_TYPE *ins;
    DATA_OBJECT temp;
@@ -865,37 +894,12 @@ globle INSTANCE_TYPE *CheckInstance(
  ***************************************************/
 globle void NoInstanceError(
   void *theEnv,
-  char *iname,
-  char *func)
+  const char *iname,
+  const char *func)
   {
    PrintErrorID(theEnv,"INSFUN",2,FALSE);
    EnvPrintRouter(theEnv,WERROR,"No such instance ");
    EnvPrintRouter(theEnv,WERROR,iname);
-   EnvPrintRouter(theEnv,WERROR," in function ");
-   EnvPrintRouter(theEnv,WERROR,func);
-   EnvPrintRouter(theEnv,WERROR,".\n");
-   SetEvaluationError(theEnv,TRUE);
-  }
-
-/***************************************************
-  NAME         : SlotExistError
-  DESCRIPTION  : Prints out an appropriate error
-                  message when a slot cannot be
-                  found for a function
-  INPUTS       : 1) The slot name
-                 2) The function name
-  RETURNS      : Nothing useful
-  SIDE EFFECTS : None
-  NOTES        : None
- ***************************************************/
-globle void SlotExistError(
-  void *theEnv,
-  char *sname,
-  char *func)
-  {
-   PrintErrorID(theEnv,"INSFUN",3,FALSE);
-   EnvPrintRouter(theEnv,WERROR,"No such slot ");
-   EnvPrintRouter(theEnv,WERROR,sname);
    EnvPrintRouter(theEnv,WERROR," in function ");
    EnvPrintRouter(theEnv,WERROR,func);
    EnvPrintRouter(theEnv,WERROR,".\n");
@@ -914,7 +918,7 @@ globle void SlotExistError(
  ***************************************************/
 globle void StaleInstanceAddress(
   void *theEnv,
-  char *func,
+  const char *func,
   int whichArg)
   {
    PrintErrorID(theEnv,"INSFUN",4,FALSE);
@@ -923,7 +927,7 @@ globle void StaleInstanceAddress(
    if (whichArg > 0)
      {
       EnvPrintRouter(theEnv,WERROR,", argument #");
-      PrintLongInteger(theEnv,WERROR,(long) whichArg);
+      PrintLongInteger(theEnv,WERROR,(long long) whichArg);
      }
    EnvPrintRouter(theEnv,WERROR,".\n");
   }
@@ -974,29 +978,29 @@ globle void EnvSetInstancesChanged(
  *******************************************************************/
 globle void PrintSlot(
   void *theEnv,
-  char *log,
+  const char *logName,
   SLOT_DESC *sd,
   INSTANCE_TYPE *ins,
-  char *theCommand)
+  const char *theCommand)
   {
-   EnvPrintRouter(theEnv,log,"slot ");
-   EnvPrintRouter(theEnv,log,ValueToString(sd->slotName->name));
+   EnvPrintRouter(theEnv,logName,"slot ");
+   EnvPrintRouter(theEnv,logName,ValueToString(sd->slotName->name));
    if (ins != NULL)
      {
-      EnvPrintRouter(theEnv,log," of instance [");
-      EnvPrintRouter(theEnv,log,ValueToString(ins->name));
-      EnvPrintRouter(theEnv,log,"]");
+      EnvPrintRouter(theEnv,logName," of instance [");
+      EnvPrintRouter(theEnv,logName,ValueToString(ins->name));
+      EnvPrintRouter(theEnv,logName,"]");
      }
    else if (sd->cls != NULL)
      {
-      EnvPrintRouter(theEnv,log," of class ");
-      EnvPrintRouter(theEnv,log,EnvGetDefclassName(theEnv,(void *) sd->cls));
+      EnvPrintRouter(theEnv,logName," of class ");
+      EnvPrintRouter(theEnv,logName,EnvGetDefclassName(theEnv,(void *) sd->cls));
      }
-   EnvPrintRouter(theEnv,log," found in ");
+   EnvPrintRouter(theEnv,logName," found in ");
    if (theCommand != NULL)
-     EnvPrintRouter(theEnv,log,theCommand);
+     EnvPrintRouter(theEnv,logName,theCommand);
    else
-     PrintHandler(theEnv,log,MessageHandlerData(theEnv)->CurrentCore->hnd,FALSE);
+     PrintHandler(theEnv,logName,MessageHandlerData(theEnv)->CurrentCore->hnd,FALSE);
   }
 
 /*****************************************************
@@ -1012,9 +1016,9 @@ globle void PrintSlot(
  *****************************************************/
 globle void PrintInstanceNameAndClass(
   void *theEnv,
-  char *logicalName,
+  const char *logicalName,
   INSTANCE_TYPE *theInstance,
-  BOOLEAN linefeedFlag)
+  intBool linefeedFlag)
   {
    EnvPrintRouter(theEnv,logicalName,"[");
    EnvPrintRouter(theEnv,logicalName,EnvGetInstanceName(theEnv,(void *) theInstance));
@@ -1035,7 +1039,7 @@ globle void PrintInstanceNameAndClass(
  ***************************************************/
 globle void PrintInstanceName(
   void *theEnv,
-  char *log,
+  const char *logName,
   void *vins)
   {
    INSTANCE_TYPE *ins;
@@ -1043,15 +1047,15 @@ globle void PrintInstanceName(
    ins = (INSTANCE_TYPE *) vins;
    if (ins->garbage)
      {
-      EnvPrintRouter(theEnv,log,"<stale instance [");
-      EnvPrintRouter(theEnv,log,ValueToString(ins->name));
-      EnvPrintRouter(theEnv,log,"]>");
+      EnvPrintRouter(theEnv,logName,"<stale instance [");
+      EnvPrintRouter(theEnv,logName,ValueToString(ins->name));
+      EnvPrintRouter(theEnv,logName,"]>");
      }
    else
      {
-      EnvPrintRouter(theEnv,log,"[");
-      EnvPrintRouter(theEnv,log,ValueToString(GetFullInstanceName(theEnv,ins)));
-      EnvPrintRouter(theEnv,log,"]");
+      EnvPrintRouter(theEnv,logName,"[");
+      EnvPrintRouter(theEnv,logName,ValueToString(GetFullInstanceName(theEnv,ins)));
+      EnvPrintRouter(theEnv,logName,"]");
      }
   }
   
@@ -1067,7 +1071,7 @@ globle void PrintInstanceName(
  ***************************************************/
 globle void PrintInstanceLongForm(
   void *theEnv,
-  char *log,
+  const char *logName,
   void *vins)
   {
    INSTANCE_TYPE *ins = (INSTANCE_TYPE *) vins;
@@ -1075,38 +1079,38 @@ globle void PrintInstanceLongForm(
    if (PrintUtilityData(theEnv)->InstanceAddressesToNames)
      {
       if (ins == &InstanceData(theEnv)->DummyInstance)
-        EnvPrintRouter(theEnv,log,"\"<Dummy Instance>\"");
+        EnvPrintRouter(theEnv,logName,"\"<Dummy Instance>\"");
       else
         {
-         EnvPrintRouter(theEnv,log,"[");
-         EnvPrintRouter(theEnv,log,ValueToString(GetFullInstanceName(theEnv,ins)));
-         EnvPrintRouter(theEnv,log,"]");
+         EnvPrintRouter(theEnv,logName,"[");
+         EnvPrintRouter(theEnv,logName,ValueToString(GetFullInstanceName(theEnv,ins)));
+         EnvPrintRouter(theEnv,logName,"]");
         }
      }
    else
      {
       if (PrintUtilityData(theEnv)->AddressesToStrings)
-        EnvPrintRouter(theEnv,log,"\"");
+        EnvPrintRouter(theEnv,logName,"\"");
       if (ins == &InstanceData(theEnv)->DummyInstance)
-        EnvPrintRouter(theEnv,log,"<Dummy Instance>");
+        EnvPrintRouter(theEnv,logName,"<Dummy Instance>");
       else if (ins->garbage)
         {
-         EnvPrintRouter(theEnv,log,"<Stale Instance-");
-         EnvPrintRouter(theEnv,log,ValueToString(ins->name));
-         EnvPrintRouter(theEnv,log,">");
+         EnvPrintRouter(theEnv,logName,"<Stale Instance-");
+         EnvPrintRouter(theEnv,logName,ValueToString(ins->name));
+         EnvPrintRouter(theEnv,logName,">");
         }
       else
         {
-         EnvPrintRouter(theEnv,log,"<Instance-");
-         EnvPrintRouter(theEnv,log,ValueToString(GetFullInstanceName(theEnv,ins)));
-         EnvPrintRouter(theEnv,log,">");
+         EnvPrintRouter(theEnv,logName,"<Instance-");
+         EnvPrintRouter(theEnv,logName,ValueToString(GetFullInstanceName(theEnv,ins)));
+         EnvPrintRouter(theEnv,logName,">");
         }
       if (PrintUtilityData(theEnv)->AddressesToStrings)
-        EnvPrintRouter(theEnv,log,"\"");
+        EnvPrintRouter(theEnv,logName,"\"");
      }
   }
 
-#if INSTANCE_PATTERN_MATCHING
+#if DEFRULE_CONSTRUCT
 
 /***************************************************
   NAME         : DecrementObjectBasisCount
@@ -1127,7 +1131,7 @@ globle void DecrementObjectBasisCount(
   void *vins)
   {
    INSTANCE_TYPE *ins;
-   register unsigned i;
+   long i;
 
    ins = (INSTANCE_TYPE *) vins;
    ins->header.busyCount--;
@@ -1174,7 +1178,7 @@ globle void IncrementObjectBasisCount(
   void *vins)
   {
    INSTANCE_TYPE *ins;
-   register unsigned i;
+   long i;
 
    ins = (INSTANCE_TYPE *) vins;
    if (ins->header.busyCount == 0)
@@ -1223,18 +1227,36 @@ globle void MatchObjectFunction(
   SIDE EFFECTS : None
   NOTES        : None
  ***************************************************/
-#if IBM_TBC
-#pragma argsused
-#endif
-globle BOOLEAN NetworkSynchronized(
+globle intBool NetworkSynchronized(
   void *theEnv,
   void *vins)
   {
-#if MAC_MCW || IBM_MCW
+#if MAC_XCD
 #pragma unused(theEnv)
 #endif
 
    return(((INSTANCE_TYPE *) vins)->reteSynchronized);
+  }
+
+/***************************************************
+  NAME         : InstanceIsDeleted
+  DESCRIPTION  : Determines if an instance has been
+                 deleted
+  INPUTS       : The instance
+  RETURNS      : TRUE if instance has been deleted, 
+                 FALSE otherwise
+  SIDE EFFECTS : None
+  NOTES        : None
+ ***************************************************/
+globle intBool InstanceIsDeleted(
+  void *theEnv,
+  void *vins)
+  {
+#if MAC_XCD
+#pragma unused(theEnv)
+#endif
+
+   return(((INSTANCE_TYPE *) vins)->garbage);
   }
 #endif
 
@@ -1302,7 +1324,7 @@ static INSTANCE_TYPE *FindImportedInstance(
    return(NULL);
   }
 
-#if INSTANCE_PATTERN_MATCHING
+#if DEFRULE_CONSTRUCT
 
 /*****************************************************
   NAME         : NetworkModifyForSharedSlot
@@ -1329,7 +1351,7 @@ static void NetworkModifyForSharedSlot(
   SLOT_DESC *sd)
   {
    INSTANCE_TYPE *ins;
-   register unsigned i;
+   long i;
 
    /* ================================================
       Make sure we haven't already examined this class
@@ -1358,8 +1380,39 @@ static void NetworkModifyForSharedSlot(
      NetworkModifyForSharedSlot(theEnv,sharedTraversalID,cls->directSubclasses.classArray[i],sd);
   }
 
-#endif
+#endif /* DEFRULE_CONSTRUCT */
 
-#endif
+/*#####################################*/
+/* ALLOW_ENVIRONMENT_GLOBALS Functions */
+/*#####################################*/
+
+#if ALLOW_ENVIRONMENT_GLOBALS
+
+globle void DecrementInstanceCount(
+  void *vptr)
+  {
+   EnvDecrementInstanceCount(GetCurrentEnvironment(),vptr);
+  }
+
+globle int GetInstancesChanged()
+  {
+   return EnvGetInstancesChanged(GetCurrentEnvironment());
+  }
+
+globle void IncrementInstanceCount(
+  void *vptr)
+  {
+   EnvIncrementInstanceCount(GetCurrentEnvironment(),vptr);
+  }
+
+globle void SetInstancesChanged(
+  int changed)
+  {
+   EnvSetInstancesChanged(GetCurrentEnvironment(),changed);
+  }
+
+#endif /* ALLOW_ENVIRONMENT_GLOBALS */
+
+#endif /* OBJECT_SYSTEM */
 
 

@@ -1,24 +1,48 @@
    /*******************************************************/
    /*      "C" Language Integrated Production System      */
    /*                                                     */
-   /*               CLIPS Version 6.21  06/15/03          */
+   /*               CLIPS Version 6.30  08/16/14          */
    /*                                                     */
    /*                                                     */
    /*******************************************************/
 
-/***************************************************************/
-/* Purpose: Procedural Code Support Routines for Deffunctions, */
-/*          Generic Function Methods,Message-Handlers          */
-/*          and Rules                                          */
-/*                                                             */
-/* Principal Programmer(s):                                    */
-/*      Brian L. Donnell                                       */
-/*                                                             */
-/* Contributing Programmer(s):                                 */
-/*                                                             */
-/* Revision History:                                           */
-/*                                                             */
-/***************************************************************/
+/**************************************************************/
+/* Purpose: Procedural Code Support Routines for              */
+/*          Deffunctions, Generic Function Methods,           */
+/*          Message-Handlersand Rules                         */
+/*                                                            */
+/* Principal Programmer(s):                                   */
+/*      Brian L. Dantes                                       */
+/*                                                            */
+/* Contributing Programmer(s):                                */
+/*                                                            */
+/* Revision History:                                          */
+/*                                                            */
+/*      6.23: Correction for FalseSymbol/TrueSymbol. DR0859   */
+/*                                                            */
+/*            Changed name of variable log to logName         */
+/*            because of Unix compiler warnings of shadowed   */
+/*            definitions.                                    */
+/*                                                            */
+/*      6.24: Renamed BOOLEAN macro type to intBool.          */
+/*                                                            */
+/*            Added pragmas to remove compilation warnings.   */
+/*                                                            */
+/*      6.30: Updated ENTITY_RECORD definitions to include    */
+/*            additional NULL initializers.                   */
+/*                                                            */
+/*            Added ReleaseProcParameters call.               */
+/*                                                            */
+/*            Added tracked memory calls.                     */
+/*                                                            */
+/*            Removed conditional code for unsupported        */
+/*            compilers/operating systems (IBM_MCW,           */
+/*            MAC_MCW, and IBM_TBC).                          */
+/*                                                            */
+/*            Added const qualifiers to remove C++            */
+/*            deprecation warnings.                           */
+/*                                                            */
+/**************************************************************/
 
 /* =========================================
    *****************************************
@@ -72,12 +96,13 @@ typedef struct
    =========================================
    ***************************************** */
 
-static void EvaluateProcParameters(void *,EXPRESSION *,int,char *,char *);
-static BOOLEAN RtnProcParam(void *,void *,DATA_OBJECT *);
-static BOOLEAN GetProcBind(void *,void *,DATA_OBJECT *);
-static BOOLEAN PutProcBind(void *,void *,DATA_OBJECT *);
-static BOOLEAN RtnProcWild(void *,void *,DATA_OBJECT *);
+static void EvaluateProcParameters(void *,EXPRESSION *,int,const char *,const char *);
+static intBool RtnProcParam(void *,void *,DATA_OBJECT *);
+static intBool GetProcBind(void *,void *,DATA_OBJECT *);
+static intBool PutProcBind(void *,void *,DATA_OBJECT *);
+static intBool RtnProcWild(void *,void *,DATA_OBJECT *);
 static void DeallocateProceduralPrimitiveData(void *);
+static void ReleaseProcParameters(void *);
 
 #if (! BLOAD_ONLY) && (! RUN_TIME)
 static int FindProcParameter(SYMBOL_HN *,EXPRESSION *,SYMBOL_HN *);
@@ -87,7 +112,7 @@ static EXPRESSION *CompactActions(void *,EXPRESSION *);
 #endif
 
 #if (! DEFFUNCTION_CONSTRUCT) || (! DEFGENERIC_CONSTRUCT)
-static BOOLEAN EvaluateBadCall(void *,void *,DATA_OBJECT *);
+static intBool EvaluateBadCall(void *,void *,DATA_OBJECT *);
 #endif
 
 /* =========================================
@@ -112,26 +137,26 @@ globle void InstallProcedurePrimitives(
   void *theEnv)
   {
    ENTITY_RECORD procParameterInfo = { "PROC_PARAM", PROC_PARAM,0,1,0,NULL,NULL,NULL,
-                                           RtnProcParam,NULL,NULL,NULL,NULL,NULL,NULL },
+                                           RtnProcParam,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL },
                      procWildInfo =      { "PROC_WILD_PARAM", PROC_WILD_PARAM,0,1,0,NULL,NULL,NULL,
-                                           RtnProcWild,NULL,NULL,NULL,NULL,NULL,NULL },
+                                           RtnProcWild,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL },
                      procGetInfo =       { "PROC_GET_BIND", PROC_GET_BIND,0,1,0,NULL,NULL,NULL,
-                                           GetProcBind,NULL,NULL,NULL,NULL,NULL,NULL },
+                                           GetProcBind,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL },
                      procBindInfo =      { "PROC_BIND", PROC_BIND,0,1,0,NULL,NULL,NULL,
-                                           PutProcBind,NULL,NULL,NULL,NULL,NULL,NULL };
+                                           PutProcBind,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL };
 #if ! DEFFUNCTION_CONSTRUCT
    ENTITY_RECORD deffunctionEntityRecord =
                      { "PCALL", PCALL,0,0,1,
                        NULL,NULL,NULL,
                        EvaluateBadCall,
-                       NULL,NULL,NULL,NULL,NULL,NULL,NULL };
+                       NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL };
 #endif
 #if ! DEFGENERIC_CONSTRUCT
    ENTITY_RECORD genericEntityRecord =
                      { "GCALL", GCALL,0,0,1,
                        NULL,NULL,NULL,
                        EvaluateBadCall,
-                       NULL,NULL,NULL,NULL,NULL,NULL,NULL };
+                       NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL };
 #endif
 
    AllocateEnvironmentData(theEnv,PROCEDURAL_PRIMITIVE_DATA,sizeof(struct proceduralPrimitiveData),DeallocateProceduralPrimitiveData);
@@ -183,6 +208,7 @@ static void DeallocateProceduralPrimitiveData(
   void *theEnv)
   {
    ReturnMultifield(theEnv,(struct multifield *) ProceduralPrimitiveData(theEnv)->NoParamValue);
+   ReleaseProcParameters(theEnv);
   }
 
 #if (! BLOAD_ONLY) && (! RUN_TIME)
@@ -215,14 +241,14 @@ static void DeallocateProceduralPrimitiveData(
  ************************************************************/
 globle EXPRESSION *ParseProcParameters(
   void *theEnv,
-  char *readSource,
+  const char *readSource,
   struct token *tkn,
   EXPRESSION *parameterList,
   SYMBOL_HN **wildcard,
   int *min,
   int *max,
   int *error,
-  int (*checkfunc)(void *,char *))
+  int (*checkfunc)(void *,const char *))
   {
    EXPRESSION *nextOne,*lastOne,*check;
    int paramprintp = 0;
@@ -341,8 +367,8 @@ NOTES        : None
 *************************************************************************/
 globle EXPRESSION *ParseProcActions(
   void *theEnv,
-  char *bodytype,
-  char *readSource,
+  const char *bodytype,
+  const char *readSource,
   struct token *tkn,
   EXPRESSION *params,
   SYMBOL_HN *wildcard,
@@ -445,7 +471,7 @@ globle EXPRESSION *ParseProcActions(
  *************************************************************************/
 globle int ReplaceProcVars(
   void *theEnv,
-  char *bodytype,
+  const char *bodytype,
   EXPRESSION *actions,
   EXPRESSION *parameterList,
   SYMBOL_HN *wildcard,
@@ -453,7 +479,7 @@ globle int ReplaceProcVars(
   void *specdata)
   {
    int position,altcode;
-   BOOLEAN boundPosn;
+   intBool boundPosn;
    EXPRESSION *arg_lvl,*altvarexp;
    SYMBOL_HN *bindName;
    PACKED_PROC_VAR pvar;
@@ -504,7 +530,7 @@ globle int ReplaceProcVars(
          else if ((position > 0) && (boundPosn == 0))
            {
             actions->type = (unsigned short) ((bindName != wildcard) ? PROC_PARAM : PROC_WILD_PARAM);
-            actions->value = AddBitMap(theEnv,(void *) &position,(int) sizeof(int));
+            actions->value = EnvAddBitMap(theEnv,(void *) &position,(int) sizeof(int));
            }
 
          /*=========================================================*/
@@ -535,7 +561,7 @@ globle int ReplaceProcVars(
             pvar.first = boundPosn;
             pvar.second = position;
             pvar.secondFlag = (bindName != wildcard) ? 0 : 1;
-            actions->value = AddBitMap(theEnv,(void *) &pvar,(int) sizeof(PACKED_PROC_VAR));
+            actions->value = EnvAddBitMap(theEnv,(void *) &pvar,(int) sizeof(PACKED_PROC_VAR));
             actions->argList = GenConstant(theEnv,SYMBOL,(void *) bindName);
             actions->argList->nextArg = altvarexp;
            }
@@ -568,7 +594,7 @@ globle int ReplaceProcVars(
            {
             actions->type = PROC_BIND;
             boundPosn = SearchParsedBindNames(theEnv,(SYMBOL_HN *) actions->argList->value);
-            actions->value = AddBitMap(theEnv,(void *) &boundPosn,(int) sizeof(BOOLEAN));
+            actions->value = EnvAddBitMap(theEnv,(void *) &boundPosn,(int) sizeof(intBool));
             arg_lvl = actions->argList->nextArg;
             rtn_struct(theEnv,expr,actions->argList);
             actions->argList = arg_lvl;
@@ -595,7 +621,7 @@ globle EXPRESSION *GenProcWildcardReference(
   void *theEnv,
   int theIndex)
   {
-   return(GenConstant(theEnv,PROC_WILD_PARAM,AddBitMap(theEnv,(void *) &theIndex,(int) sizeof(int))));
+   return(GenConstant(theEnv,PROC_WILD_PARAM,EnvAddBitMap(theEnv,(void *) &theIndex,(int) sizeof(int))));
   }
 
 #endif
@@ -634,8 +660,8 @@ globle void PushProcParameters(
   void *theEnv,
   EXPRESSION *parameterList,
   int numberOfParameters,
-  char *pname,
-  char *bodytype,
+  const char *pname,
+  const char *bodytype,
   void (*UnboundErrFunc)(void *))
   {
    register PROC_PARAM_STACK *ptmp;
@@ -712,6 +738,63 @@ globle void PopProcParameters(
    rtn_struct(theEnv,ProcParamStack,ptmp);
   }
 
+/******************************************************************
+  NAME         : ReleaseProcParameters
+  DESCRIPTION  : Restores old procedure arrays
+  INPUTS       : None
+  RETURNS      : Nothing useful
+  SIDE EFFECTS : Stack popped and globals restored
+  NOTES        : Assumes pstack != NULL
+ ******************************************************************/
+static void ReleaseProcParameters(
+  void *theEnv)
+  {
+   register PROC_PARAM_STACK *ptmp, *next;
+
+   if (ProceduralPrimitiveData(theEnv)->ProcParamArray != NULL)
+     rm(theEnv,(void *) ProceduralPrimitiveData(theEnv)->ProcParamArray,(sizeof(DATA_OBJECT) * ProceduralPrimitiveData(theEnv)->ProcParamArraySize));
+
+
+   if (ProceduralPrimitiveData(theEnv)->WildcardValue != NULL)
+     {
+      if (ProceduralPrimitiveData(theEnv)->WildcardValue->value != ProceduralPrimitiveData(theEnv)->NoParamValue)
+        { ReturnMultifield(theEnv,(struct multifield *) ProceduralPrimitiveData(theEnv)->WildcardValue->value); }
+     
+      rtn_struct(theEnv,dataObject,ProceduralPrimitiveData(theEnv)->WildcardValue); 
+     }
+     
+#if DEFGENERIC_CONSTRUCT
+   if (ProceduralPrimitiveData(theEnv)->ProcParamExpressions != NULL)
+     rm(theEnv,(void *) ProceduralPrimitiveData(theEnv)->ProcParamExpressions,(sizeof(EXPRESSION) * ProceduralPrimitiveData(theEnv)->ProcParamArraySize));
+#endif
+
+   ptmp = ProceduralPrimitiveData(theEnv)->pstack;
+   
+   while (ptmp != NULL)
+     {
+      next = ptmp->nxt;
+
+      if (ptmp->ParamArray != NULL)
+        { rm(theEnv,(void *) ptmp->ParamArray,(sizeof(DATA_OBJECT) * ptmp->ParamArraySize)); }
+
+#if DEFGENERIC_CONSTRUCT
+      if (ptmp->ParamExpressions != NULL)
+        { rm(theEnv,(void *) ptmp->ParamExpressions,(sizeof(EXPRESSION) * ptmp->ParamArraySize)); }
+#endif
+
+      if (ptmp->WildcardValue != NULL)
+        { 
+         if (ptmp->WildcardValue->value != ProceduralPrimitiveData(theEnv)->NoParamValue)
+           { ReturnMultifield(theEnv,(struct multifield *) ptmp->WildcardValue->value); }
+
+         rtn_struct(theEnv,dataObject,ptmp->WildcardValue); 
+        }
+     
+      rtn_struct(theEnv,ProcParamStack,ptmp);
+      ptmp = next;
+     }
+  }
+  
 #if DEFGENERIC_CONSTRUCT
 
 /***********************************************************
@@ -782,12 +865,19 @@ globle void EvaluateProcActions(
    register int i;
    struct defmodule *oldModule;
    EXPRESSION *oldActions;
+   struct trackedMemory *theTM;
 
    oldLocalVarArray = ProceduralPrimitiveData(theEnv)->LocalVarArray;
    ProceduralPrimitiveData(theEnv)->LocalVarArray = (lvarcnt == 0) ? NULL :
                    (DATA_OBJECT *) gm2(theEnv,(sizeof(DATA_OBJECT) * lvarcnt));
+
+   if (lvarcnt != 0)
+     { theTM = AddTrackedMemory(theEnv,ProceduralPrimitiveData(theEnv)->LocalVarArray,sizeof(DATA_OBJECT) * lvarcnt); }
+   else
+     { theTM = NULL; }
+     
    for (i = 0 ; i < lvarcnt ; i++)
-     ProceduralPrimitiveData(theEnv)->LocalVarArray[i].supplementalInfo = SymbolData(theEnv)->FalseSymbol;
+     ProceduralPrimitiveData(theEnv)->LocalVarArray[i].supplementalInfo = EnvFalseSymbol(theEnv);
 
    oldModule = ((struct defmodule *) EnvGetCurrentModule(theEnv));
    if (oldModule != theModule)
@@ -798,7 +888,7 @@ globle void EvaluateProcActions(
    if (EvaluateExpression(theEnv,actions,result))
      {
       result->type = SYMBOL;
-      result->value = SymbolData(theEnv)->FalseSymbol;
+      result->value = EnvFalseSymbol(theEnv);
      }
 
    ProceduralPrimitiveData(theEnv)->CurrentProcActions = oldActions;
@@ -821,8 +911,9 @@ globle void EvaluateProcActions(
 
    if (lvarcnt != 0)
      {
+      RemoveTrackedMemory(theEnv,theTM);
       for (i = 0 ; i < lvarcnt ; i++)
-        if (ProceduralPrimitiveData(theEnv)->LocalVarArray[i].supplementalInfo == SymbolData(theEnv)->TrueSymbol)
+        if (ProceduralPrimitiveData(theEnv)->LocalVarArray[i].supplementalInfo == EnvTrueSymbol(theEnv))
           ValueDeinstall(theEnv,&ProceduralPrimitiveData(theEnv)->LocalVarArray[i]);
       rm(theEnv,(void *) ProceduralPrimitiveData(theEnv)->LocalVarArray,(sizeof(DATA_OBJECT) * lvarcnt));
      }
@@ -841,18 +932,18 @@ globle void EvaluateProcActions(
  ****************************************************/
 globle void PrintProcParamArray(
   void *theEnv,
-  char *log)
+  const char *logName)
   {
    register int i;
 
-   EnvPrintRouter(theEnv,log," (");
+   EnvPrintRouter(theEnv,logName," (");
    for (i = 0 ; i < ProceduralPrimitiveData(theEnv)->ProcParamArraySize ; i++)
      {
-      PrintDataObject(theEnv,log,&ProceduralPrimitiveData(theEnv)->ProcParamArray[i]);
+      PrintDataObject(theEnv,logName,&ProceduralPrimitiveData(theEnv)->ProcParamArray[i]);
       if (i != ProceduralPrimitiveData(theEnv)->ProcParamArraySize-1)
-        EnvPrintRouter(theEnv,log," ");
+        EnvPrintRouter(theEnv,logName," ");
      }
-   EnvPrintRouter(theEnv,log,")\n");
+   EnvPrintRouter(theEnv,logName,")\n");
   }
 
 /****************************************************************
@@ -964,8 +1055,8 @@ static void EvaluateProcParameters(
   void *theEnv,
   EXPRESSION *parameterList,
   int numberOfParameters,
-  char *pname,
-  char *bodytype)
+  const char *pname,
+  const char *bodytype)
   {
    DATA_OBJECT *rva,temp;
    int i = 0;
@@ -1025,7 +1116,7 @@ static void EvaluateProcParameters(
                    node of ProcParamArray
   NOTES        : None
  ***************************************************/
-static BOOLEAN RtnProcParam(
+static intBool RtnProcParam(
   void *theEnv,
   void *value,
   DATA_OBJECT *result)
@@ -1053,7 +1144,7 @@ static BOOLEAN RtnProcParam(
                    ProcParamArray or the value in LocalVarArray
   NOTES        : None
  **************************************************************/
-static BOOLEAN GetProcBind(
+static intBool GetProcBind(
   void *theEnv,
   void *value,
   DATA_OBJECT *result)
@@ -1063,7 +1154,7 @@ static BOOLEAN GetProcBind(
 
    pvar = (PACKED_PROC_VAR *) ValueToBitMap(value);
    src = &ProceduralPrimitiveData(theEnv)->LocalVarArray[pvar->first - 1];
-   if (src->supplementalInfo == SymbolData(theEnv)->TrueSymbol)
+   if (src->supplementalInfo == EnvTrueSymbol(theEnv))
      {
       result->type = src->type;
       result->value = src->value;
@@ -1090,7 +1181,7 @@ static BOOLEAN GetProcBind(
       else
         EnvPrintRouter(theEnv,WERROR," unbound.\n");
       result->type = SYMBOL;
-      result->value = SymbolData(theEnv)->FalseSymbol;
+      result->value = EnvFalseSymbol(theEnv);
       return(TRUE);
      }
    if (pvar->secondFlag == 0)
@@ -1118,7 +1209,7 @@ static BOOLEAN GetProcBind(
                    value in caller's buffer.
   NOTES        : None
  **************************************************************/
-static BOOLEAN PutProcBind(
+static intBool PutProcBind(
   void *theEnv,
   void *value,
   DATA_OBJECT *result)
@@ -1128,11 +1219,11 @@ static BOOLEAN PutProcBind(
    dst = &ProceduralPrimitiveData(theEnv)->LocalVarArray[*((int *) ValueToBitMap(value)) - 1];
    if (GetFirstArgument() == NULL)
      {
-      if (dst->supplementalInfo == SymbolData(theEnv)->TrueSymbol)
+      if (dst->supplementalInfo == EnvTrueSymbol(theEnv))
         ValueDeinstall(theEnv,dst);
-      dst->supplementalInfo = SymbolData(theEnv)->FalseSymbol;
+      dst->supplementalInfo = EnvFalseSymbol(theEnv);
       result->type = SYMBOL;
-      result->value = SymbolData(theEnv)->FalseSymbol;
+      result->value = EnvFalseSymbol(theEnv);
      }
    else
      {
@@ -1140,9 +1231,9 @@ static BOOLEAN PutProcBind(
         StoreInMultifield(theEnv,result,GetFirstArgument(),TRUE);
       else
         EvaluateExpression(theEnv,GetFirstArgument(),result);
-      if (dst->supplementalInfo == SymbolData(theEnv)->TrueSymbol)
+      if (dst->supplementalInfo == EnvTrueSymbol(theEnv))
         ValueDeinstall(theEnv,dst);
-      dst->supplementalInfo = SymbolData(theEnv)->TrueSymbol;
+      dst->supplementalInfo = EnvTrueSymbol(theEnv);
       dst->type = result->type;
       dst->value = result->value;
       dst->begin = result->begin;
@@ -1165,7 +1256,7 @@ static BOOLEAN PutProcBind(
                    with corresponding values of ProcParamArray
   NOTES        : Multi-field is NOT on list of ephemeral segments
  ****************************************************************/
-static BOOLEAN RtnProcWild(
+static intBool RtnProcWild(
   void *theEnv,
   void *value,
   DATA_OBJECT *result)
@@ -1302,7 +1393,7 @@ static EXPRESSION *CompactActions(
    if (actions->argList == NULL)
      {
       actions->type = SYMBOL;
-      actions->value = SymbolData(theEnv)->FalseSymbol;
+      actions->value = EnvFalseSymbol(theEnv);
      }
    else if (actions->argList->nextArg == NULL)
      {
@@ -1332,17 +1423,20 @@ static EXPRESSION *CompactActions(
                  contain deffunctions and generic
                  functions which cannot be used
  ******************************************************/
-static BOOLEAN EvaluateBadCall(
+static intBool EvaluateBadCall(
   void *theEnv,
   void *value,
   DATA_OBJECT *result)
   {
+#if MAC_XCD
+#pragma unused(value)
+#endif
    PrintErrorID(theEnv,"PRCCODE",1,FALSE);
    EnvPrintRouter(theEnv,WERROR,"Attempted to call a deffunction/generic function ");
    EnvPrintRouter(theEnv,WERROR,"which does not exist.\n");
    SetEvaluationError(theEnv,TRUE);
    SetpType(result,SYMBOL);
-   SetpValue(result,SymbolData(theEnv)->FalseSymbol);
+   SetpValue(result,EnvFalseSymbol(theEnv));
    return(FALSE);
   }
 

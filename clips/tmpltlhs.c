@@ -1,7 +1,7 @@
    /*******************************************************/
    /*      "C" Language Integrated Production System      */
    /*                                                     */
-   /*             CLIPS Version 6.20  01/31/02            */
+   /*             CLIPS Version 6.30  08/16/14            */
    /*                                                     */
    /*                DEFTEMPLATE LHS MODULE               */
    /*******************************************************/
@@ -15,6 +15,13 @@
 /* Contributing Programmer(s):                               */
 /*                                                           */
 /* Revision History:                                         */
+/*                                                           */
+/*      6.24: Renamed BOOLEAN macro type to intBool.         */
+/*                                                           */
+/*      6.30: Support for rete network exists node.          */
+/*                                                           */
+/*            Added const qualifiers to remove C++           */
+/*            deprecation warnings.                          */
 /*                                                           */
 /*************************************************************/
 
@@ -50,10 +57,10 @@
 /* LOCAL INTERNAL FUNCTION DEFINITIONS */
 /***************************************/
 
-   static struct lhsParseNode    *GetLHSSlots(void *,char *,struct token *,struct deftemplate *,int *);
-   static struct lhsParseNode    *GetSingleLHSSlot(void *,char *,struct token *,
+   static struct lhsParseNode    *GetLHSSlots(void *,const char *,struct token *,struct deftemplate *,int *);
+   static struct lhsParseNode    *GetSingleLHSSlot(void *,const char *,struct token *,
                                                    struct templateSlot *,int *,short);
-   static BOOLEAN                 MultiplyDefinedLHSSlots(void *,struct lhsParseNode *,SYMBOL_HN *);
+   static intBool                 MultiplyDefinedLHSSlots(void *,struct lhsParseNode *,SYMBOL_HN *);
 
 /*********************************************/
 /* DeftemplateLHSParse: Parses a LHS pattern */
@@ -61,7 +68,7 @@
 /*********************************************/
 globle struct lhsParseNode *DeftemplateLHSParse(
   void *theEnv,
-  char *readSource,
+  const char *readSource,
   struct deftemplate *theDeftemplate)
   {
    struct lhsParseNode *head, *firstSlot;
@@ -86,11 +93,13 @@ globle struct lhsParseNode *DeftemplateLHSParse(
    head = GetLHSParseNode(theEnv);
    head->type = SF_WILDCARD;
    head->negated = FALSE;
+   head->exists = FALSE;
    head->index = 0;
    head->slotNumber = 1;
    head->bottom = GetLHSParseNode(theEnv);
    head->bottom->type = SYMBOL;
    head->bottom->negated = FALSE;
+   head->bottom->exists = FALSE;
    head->bottom->value = (void *) theDeftemplate->header.name;
 
    /*==========================================*/
@@ -120,7 +129,7 @@ globle struct lhsParseNode *DeftemplateLHSParse(
 /******************************************/
 static struct lhsParseNode *GetLHSSlots(
   void *theEnv,
-  char *readSource,
+  const char *readSource,
   struct token *tempToken,
   struct deftemplate *theDeftemplate,
   int *error)
@@ -173,7 +182,7 @@ static struct lhsParseNode *GetLHSSlots(
         {
          *error = TRUE;
          InvalidDeftemplateSlotMessage(theEnv,ValueToString(tempToken->value),
-                                       ValueToString(theDeftemplate->header.name));
+                                       ValueToString(theDeftemplate->header.name),TRUE);
          ReturnLHSParseNodes(theEnv,firstSlot);
          return(NULL);
         }
@@ -234,7 +243,7 @@ static struct lhsParseNode *GetLHSSlots(
 /*****************************************************/
 static struct lhsParseNode *GetSingleLHSSlot(
   void *theEnv,
-  char *readSource,
+  const char *readSource,
   struct token *tempToken,
   struct templateSlot *slotPtr,
   int *error,
@@ -339,7 +348,7 @@ static struct lhsParseNode *GetSingleLHSSlot(
 /* MultiplyDefinedLHSSlots: Determines if a slot name */
 /*   was used more than once in a LHS pattern.        */
 /******************************************************/
-static BOOLEAN MultiplyDefinedLHSSlots(
+static intBool MultiplyDefinedLHSSlots(
   void *theEnv,
   struct lhsParseNode *theSlots,
   SYMBOL_HN *slotName)

@@ -1,7 +1,7 @@
    /*******************************************************/
    /*      "C" Language Integrated Production System      */
    /*                                                     */
-   /*             CLIPS Version 6.20  01/31/02            */
+   /*             CLIPS Version 6.30  08/16/14            */
    /*                                                     */
    /*             DEFGLOBAL PARSER HEADER FILE            */
    /*******************************************************/
@@ -15,6 +15,20 @@
 /* Contributing Programmer(s):                               */
 /*                                                           */
 /* Revision History:                                         */
+/*                                                           */
+/*      6.24: Renamed BOOLEAN macro type to intBool.         */
+/*                                                           */
+/*            Made the construct redefinition message more   */
+/*            prominent.                                     */
+/*                                                           */
+/*      6.30: Removed conditional code for unsupported       */
+/*            compilers/operating systems (IBM_MCW and       */
+/*            MAC_MCW).                                      */
+/*                                                           */
+/*            Added const qualifiers to remove C++           */
+/*            deprecation warnings.                          */
+/*                                                           */
+/*            Moved WatchGlobals global to defglobalData.    */
 /*                                                           */
 /*************************************************************/
 
@@ -40,11 +54,11 @@ struct defglobal;
 #define LOCALE extern
 #endif
 
-   LOCALE BOOLEAN                 ParseDefglobal(void *,char *);
-   LOCALE BOOLEAN                 ReplaceGlobalVariable(void *,struct expr *);
-   LOCALE void                    GlobalReferenceErrorMessage(void *,char *);
+   LOCALE intBool                 ParseDefglobal(void *,const char *);
+   LOCALE intBool                 ReplaceGlobalVariable(void *,struct expr *);
+   LOCALE void                    GlobalReferenceErrorMessage(void *,const char *);
 
-#endif
+#endif /* _H_globlpsr */
 
 
 

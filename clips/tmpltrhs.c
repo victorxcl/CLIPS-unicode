@@ -1,7 +1,7 @@
    /*******************************************************/
    /*      "C" Language Integrated Production System      */
    /*                                                     */
-   /*             CLIPS Version 6.20  01/31/02            */
+   /*             CLIPS Version 6.30  07/25/14            */
    /*                                                     */
    /*          DEFTEMPLATE RHS PARSING HEADER FILE        */
    /*******************************************************/
@@ -16,6 +16,15 @@
 /* Contributing Programmer(s):                               */
 /*                                                           */
 /* Revision History:                                         */
+/*                                                           */
+/*      6.24: Added additional argument required for         */
+/*            DeriveDefaultFromConstraints.                  */
+/*                                                           */
+/*            Added additional argument required for         */
+/*            InvalidDeftemplateSlotMessage.                 */
+/*                                                           */
+/*      6.30: Added const qualifiers to remove C++           */
+/*            deprecation warnings.                          */
 /*                                                           */
 /*************************************************************/
 
@@ -46,11 +55,11 @@
 /* LOCAL INTERNAL FUNCTION DEFINITIONS */
 /***************************************/
 
-   static struct expr            *ParseAssertSlotValues(void *,char *,struct token *,struct templateSlot *,int *,int);
+   static struct expr            *ParseAssertSlotValues(void *,const char *,struct token *,struct templateSlot *,int *,int);
    static struct expr            *ReorderAssertSlotValues(void *,struct templateSlot *,struct expr *,int *);
    static struct expr            *GetSlotAssertValues(void *,struct templateSlot *,struct expr *,int *);
    static struct expr            *FindAssertSlotItem(struct templateSlot *,struct expr *);
-   static struct templateSlot    *ParseSlotLabel(void *,char *,struct token *,struct deftemplate *,int *,int);
+   static struct templateSlot    *ParseSlotLabel(void *,const char *,struct token *,struct deftemplate *,int *,int);
 
 /******************************************************************/
 /* ParseAssertTemplate: Parses and builds the list of values that */
@@ -58,7 +67,7 @@
 /******************************************************************/
 globle struct expr *ParseAssertTemplate(
   void *theEnv,
-  char *readSource,
+  const char *readSource,
   struct token *theToken,
   int *error,
   int endType,
@@ -163,7 +172,7 @@ globle struct expr *ParseAssertTemplate(
 /****************************************************************/
 static struct templateSlot *ParseSlotLabel(
   void *theEnv,
-  char *inputSource,
+  const char *inputSource,
   struct token *tempToken,
   struct deftemplate *theDeftemplate,
   int *error,
@@ -226,7 +235,7 @@ static struct templateSlot *ParseSlotLabel(
    if ((slotPtr = FindSlot(theDeftemplate,(SYMBOL_HN *) tempToken->value,&position)) == NULL)
      {
       InvalidDeftemplateSlotMessage(theEnv,ValueToString(tempToken->value),
-                                    ValueToString(theDeftemplate->header.name));
+                                    ValueToString(theDeftemplate->header.name),TRUE);
       *error = TRUE;
       return(NULL);
      }
@@ -243,7 +252,7 @@ static struct templateSlot *ParseSlotLabel(
 /**************************************************************************/
 static struct expr *ParseAssertSlotValues(
   void *theEnv,
-  char *inputSource,
+  const char *inputSource,
   struct token *tempToken,
   struct templateSlot *slotPtr,
   int *error,
@@ -460,6 +469,7 @@ static struct expr *GetSlotAssertValues(
    struct expr *slotItem;
    struct expr *newArg, *tempArg;
    DATA_OBJECT theDefault;
+   const char *nullBitMap = "\0";
 
    /*==================================================*/
    /* Determine if the slot is assigned in the assert. */
@@ -508,7 +518,7 @@ static struct expr *GetSlotAssertValues(
                (slotPtr->defaultDynamic == FALSE))
         {
          DeriveDefaultFromConstraints(theEnv,slotPtr->constraints,&theDefault,
-                                      (int) slotPtr->multislot);
+                                      (int) slotPtr->multislot,TRUE);
          newArg = ConvertValueToExpression(theEnv,&theDefault);
         }
 
@@ -530,7 +540,7 @@ static struct expr *GetSlotAssertValues(
 
    if (slotPtr->multislot)
      {
-      tempArg = GenConstant(theEnv,FACT_STORE_MULTIFIELD,AddBitMap(theEnv,(void *) "\0",1));
+      tempArg = GenConstant(theEnv,FACT_STORE_MULTIFIELD,EnvAddBitMap(theEnv,(void *) nullBitMap,1));
       tempArg->argList = newArg;
       newArg = tempArg;
      }

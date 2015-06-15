@@ -1,7 +1,7 @@
    /*******************************************************/
    /*      "C" Language Integrated Production System      */
    /*                                                     */
-   /*             CLIPS Version 6.20  01/31/02            */
+   /*             CLIPS Version 6.30  08/16/14            */
    /*                                                     */
    /*               DEFAULT ATTRIBUTE MODULE              */
    /*******************************************************/
@@ -15,9 +15,17 @@
 /*      Gary D. Riley                                        */
 /*                                                           */
 /* Contributing Programmer(s):                               */
-/*      Brian Donnell                                        */
+/*      Brian Dantes                                         */
 /*                                                           */
 /* Revision History:                                         */
+/*                                                           */
+/*      6.24: Support for deftemplate-slot-default-value     */
+/*            function.                                      */ 
+/*                                                           */
+/*      6.30: Support for long long integers.                */
+/*                                                           */
+/*            Added const qualifiers to remove C++           */
+/*            deprecation warnings.                          */
 /*                                                           */
 /*************************************************************/
 
@@ -58,7 +66,8 @@ globle void DeriveDefaultFromConstraints(
   void *theEnv,
   CONSTRAINT_RECORD *constraints,
   DATA_OBJECT *theDefault,
-  int multifield)
+  int multifield,
+  int garbageMultifield)
   {
    unsigned short theType;
    unsigned long minFields;
@@ -77,7 +86,8 @@ globle void DeriveDefaultFromConstraints(
          SetpType(theDefault,MULTIFIELD);
          SetpDOBegin(theDefault,1);
          SetpDOEnd(theDefault,0);
-         SetpValue(theDefault,(void *) EnvCreateMultifield(theEnv,0L));
+         if (garbageMultifield) SetpValue(theDefault,(void *) EnvCreateMultifield(theEnv,0L));
+         else SetpValue(theDefault,(void *) CreateMultifield2(theEnv,0L)); 
         }
       else
         {
@@ -107,7 +117,7 @@ globle void DeriveDefaultFromConstraints(
    else if (constraints->integersAllowed)
      {
       theType = INTEGER;
-      theValue = FindDefaultValue(theEnv,INTEGER,constraints,EnvAddLong(theEnv,0L));
+      theValue = FindDefaultValue(theEnv,INTEGER,constraints,EnvAddLong(theEnv,0LL));
      }
 
    else if (constraints->floatsAllowed)
@@ -138,7 +148,7 @@ globle void DeriveDefaultFromConstraints(
    else if (constraints->externalAddressesAllowed)
      {
       theType = EXTERNAL_ADDRESS;
-      theValue = NULL;
+      theValue = EnvAddExternalAddress(theEnv,NULL,0);
      }
 
    else
@@ -163,7 +173,8 @@ globle void DeriveDefaultFromConstraints(
       SetpType(theDefault,MULTIFIELD);
       SetpDOBegin(theDefault,1);
       SetpDOEnd(theDefault,(long) minFields);
-      SetpValue(theDefault,(void *) EnvCreateMultifield(theEnv,minFields));
+      if (garbageMultifield) SetpValue(theDefault,(void *) EnvCreateMultifield(theEnv,minFields));
+      else SetpValue(theDefault,(void *) CreateMultifield2(theEnv,minFields));
 
       for (; minFields > 0; minFields--)
         {
@@ -220,11 +231,11 @@ static void *FindDefaultValue(
       if (theConstraints->minValue->type == INTEGER)
         { return(theConstraints->minValue->value); }
       else if (theConstraints->minValue->type == FLOAT)
-        { return(EnvAddLong(theEnv,(long) ValueToDouble(theConstraints->minValue->value))); }
+        { return(EnvAddLong(theEnv,(long long) ValueToDouble(theConstraints->minValue->value))); }
       else if (theConstraints->maxValue->type == INTEGER)
         { return(theConstraints->maxValue->value); }
       else if (theConstraints->maxValue->type == FLOAT)
-        { return(EnvAddLong(theEnv,(long) ValueToDouble(theConstraints->maxValue->value))); }
+        { return(EnvAddLong(theEnv,(long long) ValueToDouble(theConstraints->maxValue->value))); }
      }
    else if (theType == FLOAT)
      {
@@ -253,7 +264,7 @@ static void *FindDefaultValue(
 /**********************************************/
 globle struct expr *ParseDefault(
   void *theEnv,
-  char *readSource,
+  const char *readSource,
   int multifield,
   int dynamic,
   int evalStatic,

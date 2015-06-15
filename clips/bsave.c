@@ -1,7 +1,7 @@
    /*******************************************************/
    /*      "C" Language Integrated Production System      */
    /*                                                     */
-   /*               CLIPS Version 6.22  06/15/04          */
+   /*               CLIPS Version 6.30  08/22/14          */
    /*                                                     */
    /*                     BSAVE MODULE                    */
    /*******************************************************/
@@ -12,11 +12,28 @@
 /*                                                           */
 /* Principal Programmer(s):                                  */
 /*      Gary D. Riley                                        */
-/*      Brian L. Donnell                                     */
+/*      Brian L. Dantes                                      */
 /*                                                           */
 /* Contributing Programmer(s):                               */
 /*                                                           */
 /* Revision History:                                         */
+/*                                                           */
+/*      6.24: Renamed BOOLEAN macro type to intBool.         */
+/*                                                           */
+/*            Added environment parameter to GenClose.       */
+/*            Added environment parameter to GenOpen.        */
+/*                                                           */
+/*      6.30: Changed integer type/precision.                */
+/*                                                           */
+/*            Used genstrncpy instead of strncpy.            */
+/*                                                           */
+/*            Borland C (IBM_TBC) and Metrowerks CodeWarrior */
+/*            (MAC_MCW, IBM_MCW) are no longer supported.    */
+/*                                                           */
+/*            Added const qualifiers to remove C++           */
+/*            deprecation warnings.                          */
+/*                                                           */
+/*            Converted API macros to function calls.        */
 /*                                                           */
 /*************************************************************/
 
@@ -44,7 +61,7 @@
    static void                        FindNeededItems(void *);
    static void                        InitializeFunctionNeededFlags(void *);
    static void                        WriteNeededFunctions(void *,FILE *);
-   static unsigned long int           FunctionBinarySize(void *);
+   static size_t                      FunctionBinarySize(void *);
    static void                        WriteBinaryHeader(void *,FILE *);
    static void                        WriteBinaryFooter(void *,FILE *);
 #endif
@@ -86,14 +103,14 @@ globle int BsaveCommand(
   void *theEnv)
   {
 #if (! RUN_TIME) && BLOAD_AND_BSAVE
-   char *fileName;
+   const char *fileName;
 
    if (EnvArgCountCheck(theEnv,"bsave",EXACTLY,1) == -1) return(FALSE);
    fileName = GetFileName(theEnv,"bsave",1);
    if (fileName != NULL)
      { if (EnvBsave(theEnv,fileName)) return(TRUE); }
 #else
-#if MAC_MCW || IBM_MCW
+#if MAC_XCD
 #pragma unused(theEnv)
 #endif
 #endif
@@ -106,9 +123,9 @@ globle int BsaveCommand(
 /* EnvBsave: C access routine */
 /*   for the bsave command.   */
 /******************************/
-globle BOOLEAN EnvBsave(
+globle intBool EnvBsave(
   void *theEnv,
-  char *fileName)
+  const char *fileName)
   {
    FILE *fp;
    struct BinaryItem *biPtr;
@@ -132,7 +149,7 @@ globle BOOLEAN EnvBsave(
    /* Open the file. */
    /*================*/
 
-   if ((fp = GenOpen(fileName,"wb")) == NULL)
+   if ((fp = GenOpen(theEnv,fileName,"wb")) == NULL)
      {
       OpenErrorMessage(theEnv,"bsave",fileName);
       return(0);
@@ -188,7 +205,7 @@ globle BOOLEAN EnvBsave(
      {
       if (biPtr->bsaveStorageFunction != NULL)
         {
-         strncpy(constructBuffer,biPtr->name,CONSTRUCT_HEADER_SIZE);
+         genstrncpy(constructBuffer,biPtr->name,CONSTRUCT_HEADER_SIZE);
          GenWrite(constructBuffer,(unsigned long) CONSTRUCT_HEADER_SIZE,fp);
          (*biPtr->bsaveStorageFunction)(theEnv,fp);
         }
@@ -226,7 +243,7 @@ globle BOOLEAN EnvBsave(
      {
       if (biPtr->bsaveFunction != NULL)
         {
-         strncpy(constructBuffer,biPtr->name,CONSTRUCT_HEADER_SIZE);
+         genstrncpy(constructBuffer,biPtr->name,CONSTRUCT_HEADER_SIZE);
          GenWrite(constructBuffer,(unsigned long) CONSTRUCT_HEADER_SIZE,fp);
          (*biPtr->bsaveFunction)(theEnv,fp);
         }
@@ -248,7 +265,7 @@ globle BOOLEAN EnvBsave(
    /* Close the file. */
    /*=================*/
 
-   GenClose(fp);
+   GenClose(theEnv,fp);
 
    /*=============================*/
    /* Restore the current module. */
@@ -304,7 +321,8 @@ static void WriteNeededFunctions(
   void *theEnv,
   FILE *fp)
   {
-   unsigned long int space, count = 0, length;
+   unsigned long int count = 0;
+   size_t space, length;
    struct FunctionDefinition *functionList;
 
    /*================================================*/
@@ -351,7 +369,7 @@ static void WriteNeededFunctions(
       if (functionList->bsaveIndex >= 0)
         {
          length = strlen(ValueToString(functionList->callFunctionName)) + 1;
-         GenWrite(ValueToString(functionList->callFunctionName),(unsigned long) length,fp);
+         GenWrite((void *) ValueToString(functionList->callFunctionName),(unsigned long) length,fp);
         }
      }
   }
@@ -361,10 +379,10 @@ static void WriteNeededFunctions(
 /*   of bytes needed to save all of the      */
 /*   function names in the binary save file. */
 /*********************************************/
-static unsigned long int FunctionBinarySize(
+static size_t FunctionBinarySize(
   void *theEnv)
   {
-   unsigned long int size = 0;
+   size_t size = 0;
    struct FunctionDefinition *functionList;
 
    for (functionList = GetFunctionList(theEnv);
@@ -479,8 +497,8 @@ static void WriteBinaryHeader(
   void *theEnv,
   FILE *fp)
   {
-   GenWrite(BloadData(theEnv)->BinaryPrefixID,(unsigned long) strlen(BloadData(theEnv)->BinaryPrefixID) + 1,fp);
-   GenWrite(BloadData(theEnv)->BinaryVersionID,(unsigned long) strlen(BloadData(theEnv)->BinaryVersionID) + 1,fp);
+   GenWrite((void *) BloadData(theEnv)->BinaryPrefixID,(unsigned long) strlen(BloadData(theEnv)->BinaryPrefixID) + 1,fp);
+   GenWrite((void *) BloadData(theEnv)->BinaryVersionID,(unsigned long) strlen(BloadData(theEnv)->BinaryVersionID) + 1,fp);
   }
 
 /******************************************************/
@@ -493,7 +511,7 @@ static void WriteBinaryFooter(
   {
    char footerBuffer[CONSTRUCT_HEADER_SIZE];
 
-   strncpy(footerBuffer,BloadData(theEnv)->BinaryPrefixID,CONSTRUCT_HEADER_SIZE);
+   genstrncpy(footerBuffer,BloadData(theEnv)->BinaryPrefixID,CONSTRUCT_HEADER_SIZE);
    GenWrite(footerBuffer,(unsigned long) CONSTRUCT_HEADER_SIZE,fp);
   }
 
@@ -507,9 +525,9 @@ static void WriteBinaryFooter(
 /*   data structures of a construct or other "item" to a  */
 /*   binary file.                                         */
 /**********************************************************/
-globle BOOLEAN AddBinaryItem(
+globle intBool AddBinaryItem(
   void *theEnv,
-  char *name,
+  const char *name,
   int priority,
   void (*findFunction)(void *),
   void (*expressionFunction)(void *,FILE *),
@@ -582,6 +600,24 @@ globle BOOLEAN AddBinaryItem(
   }
 
 #endif /* BLOAD || BLOAD_ONLY || BLOAD_AND_BSAVE */
+
+/*#####################################*/
+/* ALLOW_ENVIRONMENT_GLOBALS Functions */
+/*#####################################*/
+
+#if BLOAD_AND_BSAVE
+
+#if ALLOW_ENVIRONMENT_GLOBALS
+
+globle intBool Bsave(
+  const char *fileName)
+  {
+   return EnvBsave(GetCurrentEnvironment(),fileName);
+  }
+
+#endif /* ALLOW_ENVIRONMENT_GLOBALS */
+
+#endif /* BLOAD_AND_BSAVE */
 
 
 

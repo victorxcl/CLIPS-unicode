@@ -1,7 +1,7 @@
    /*******************************************************/
    /*      "C" Language Integrated Production System      */
    /*                                                     */
-   /*             CLIPS Version 6.20  01/31/02            */
+   /*             CLIPS Version 6.30  08/16/14            */
    /*                                                     */
    /*          LOGICAL DEPENDENCIES HEADER FILE           */
    /*******************************************************/
@@ -16,6 +16,15 @@
 /* Contributing Programmer(s):                               */
 /*                                                           */
 /* Revision History:                                         */
+/*                                                           */
+/*      6.24: Removed LOGICAL_DEPENDENCIES compilation flag. */
+/*                                                           */
+/*            Renamed BOOLEAN macro type to intBool.         */
+/*                                                           */
+/*            Rule with exists CE has incorrect activation.  */
+/*            DR0867                                         */
+/*                                                           */
+/*      6.30: Added support for hashed memories.             */
 /*                                                           */
 /*************************************************************/
 
@@ -45,7 +54,7 @@ struct dependency
 #define LOCALE extern
 #endif
 
-   LOCALE BOOLEAN                        AddLogicalDependencies(void *,struct patternEntity *,int);
+   LOCALE intBool                        AddLogicalDependencies(void *,struct patternEntity *,int);
    LOCALE void                           RemoveEntityDependencies(void *,struct patternEntity *);
    LOCALE void                           RemovePMDependencies(void *,struct partialMatch *);
    LOCALE void                           DestroyPMDependencies(void *,struct partialMatch *);
@@ -56,8 +65,9 @@ struct dependency
    LOCALE void                           DependenciesCommand(void *);
    LOCALE void                           DependentsCommand(void *);
    LOCALE void                           ReturnEntityDependencies(void *,struct patternEntity *);
+   LOCALE struct partialMatch           *FindLogicalBind(struct joinNode *,struct partialMatch *);
 
-#endif
+#endif /* _H_lgcldpnd */
 
 
 

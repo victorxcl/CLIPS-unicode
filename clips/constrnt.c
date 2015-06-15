@@ -1,7 +1,7 @@
    /*******************************************************/
    /*      "C" Language Integrated Production System      */
    /*                                                     */
-   /*             CLIPS Version 6.22  06/15/04            */
+   /*             CLIPS Version 6.30  08/16/14            */
    /*                                                     */
    /*                 CONSTRAINT MODULE                   */
    /*******************************************************/
@@ -16,9 +16,23 @@
 /*      Gary D. Riley                                        */
 /*                                                           */
 /* Contributing Programmer(s):                               */
-/*      Brian Donnell                                        */
+/*      Brian Dantes                                         */
 /*                                                           */
 /* Revision History:                                         */
+/*                                                           */
+/*      6.23: Correction for FalseSymbol/TrueSymbol. DR0859  */
+/*                                                           */
+/*      6.24: Added allowed-classes slot facet.              */
+/*                                                           */
+/*            Renamed BOOLEAN macro type to intBool.         */
+/*                                                           */
+/*      6.30: Removed conditional code for unsupported       */
+/*            compilers/operating systems (IBM_MCW and       */
+/*            MAC_MCW).                                      */
+/*                                                           */
+/*            Changed integer type/precision.                */
+/*                                                           */
+/*            Converted API macros to function calls.        */
 /*                                                           */
 /*************************************************************/
 
@@ -116,7 +130,7 @@ static void DeallocateConstraintData(
    rm(theEnv,ConstraintData(theEnv)->ConstraintHashtable,
       (int) sizeof (struct constraintRecord *) * SIZE_CONSTRAINT_HASH);
 #else
-#if MAC_MCW || IBM_MCW
+#if MAC_XCD
 #pragma unused(theEnv)
 #endif
 #endif
@@ -124,9 +138,8 @@ static void DeallocateConstraintData(
 #if (BLOAD || BLOAD_ONLY || BLOAD_AND_BSAVE) && (! RUN_TIME)
    if (ConstraintData(theEnv)->NumberOfConstraints != 0)
      {
-      genlongfree(theEnv,(void *) ConstraintData(theEnv)->ConstraintArray,
-                  (unsigned long) (sizeof(CONSTRAINT_RECORD) *
-                                  ConstraintData(theEnv)->NumberOfConstraints));
+      genfree(theEnv,(void *) ConstraintData(theEnv)->ConstraintArray,
+              (sizeof(CONSTRAINT_RECORD) * ConstraintData(theEnv)->NumberOfConstraints));
      }
 #endif
   }
@@ -146,6 +159,7 @@ static void ReturnConstraintRecord(
 
    if (constraints->bucket < 0)
      {
+      ReturnExpression(theEnv,constraints->classList);
       ReturnExpression(theEnv,constraints->restrictionList);
       ReturnExpression(theEnv,constraints->maxValue);
       ReturnExpression(theEnv,constraints->minValue);
@@ -169,6 +183,7 @@ static void DeinstallConstraintRecord(
   {
    if (constraints->bucket >= 0)
      {
+      RemoveHashedExpression(theEnv,constraints->classList);
       RemoveHashedExpression(theEnv,constraints->restrictionList);
       RemoveHashedExpression(theEnv,constraints->maxValue);
       RemoveHashedExpression(theEnv,constraints->minValue);
@@ -177,6 +192,7 @@ static void DeinstallConstraintRecord(
      }
    else
      {
+      ExpressionDeinstall(theEnv,constraints->classList);
       ExpressionDeinstall(theEnv,constraints->restrictionList);
       ExpressionDeinstall(theEnv,constraints->maxValue);
       ExpressionDeinstall(theEnv,constraints->minValue);
@@ -250,15 +266,15 @@ globle void RemoveConstraint(
 /* HashConstraint: Returns a hash  */
 /*   value for a given constraint. */
 /***********************************/
-globle int HashConstraint(
+globle unsigned long HashConstraint(
   struct constraintRecord *theConstraint)
   {
    int i = 0;
-   unsigned int count = 0;
-   int hashValue;
+   unsigned long count = 0;
+   unsigned long hashValue;
    struct expr *tmpPtr;
 
-   count += (unsigned)
+   count += (unsigned long)
       (theConstraint->anyAllowed * 17) +
       (theConstraint->symbolsAllowed * 5) +
       (theConstraint->stringsAllowed * 23) +
@@ -267,7 +283,7 @@ globle int HashConstraint(
       (theConstraint->instanceNamesAllowed * 31) +
       (theConstraint->instanceAddressesAllowed * 17);
 
-   count += (unsigned)
+   count += (unsigned long)
       (theConstraint->externalAddressesAllowed * 29) +
       (theConstraint->voidAllowed * 29) +
       (theConstraint->multifieldsAllowed * 29) +
@@ -275,11 +291,15 @@ globle int HashConstraint(
       (theConstraint->anyRestriction * 59) +
       (theConstraint->symbolRestriction * 61);
       
-   count += (unsigned)
+   count += (unsigned long)
       (theConstraint->stringRestriction * 3) +
       (theConstraint->floatRestriction * 37) +
       (theConstraint->integerRestriction * 9) +
+      (theConstraint->classRestriction * 11) +
       (theConstraint->instanceNameRestriction * 7);
+
+   for (tmpPtr = theConstraint->classList; tmpPtr != NULL; tmpPtr = tmpPtr->nextArg)
+     { count += GetAtomicHashValue(tmpPtr->type,tmpPtr->value,i++); }
 
    for (tmpPtr = theConstraint->restrictionList; tmpPtr != NULL; tmpPtr = tmpPtr->nextArg)
      { count += GetAtomicHashValue(tmpPtr->type,tmpPtr->value,i++); }
@@ -297,10 +317,10 @@ globle int HashConstraint(
      { count += GetAtomicHashValue(tmpPtr->type,tmpPtr->value,i++); }
 
    if (theConstraint->multifield != NULL)
-     { count += (unsigned) HashConstraint(theConstraint->multifield); }
+     { count += HashConstraint(theConstraint->multifield); }
 
-   hashValue = (int) (count % SIZE_CONSTRAINT_HASH);
-   if (hashValue < 0) hashValue = - hashValue;
+   hashValue = (unsigned long) (count % SIZE_CONSTRAINT_HASH);
+
    return(hashValue);
   }
 
@@ -332,8 +352,18 @@ static int ConstraintCompare(
        (constraint1->stringRestriction != constraint2->stringRestriction) ||
        (constraint1->floatRestriction != constraint2->floatRestriction) ||
        (constraint1->integerRestriction != constraint2->integerRestriction) ||
+       (constraint1->classRestriction != constraint2->classRestriction) ||
        (constraint1->instanceNameRestriction != constraint2->instanceNameRestriction))
      { return(FALSE); }
+
+   for (tmpPtr1 = constraint1->classList, tmpPtr2 = constraint2->classList;
+        (tmpPtr1 != NULL) && (tmpPtr2 != NULL);
+        tmpPtr1 = tmpPtr1->nextArg, tmpPtr2 = tmpPtr2->nextArg)
+     {
+      if ((tmpPtr1->type != tmpPtr2->type) || (tmpPtr1->value != tmpPtr2->value))
+        { return(FALSE); }
+     }
+   if (tmpPtr1 != tmpPtr2) return(FALSE);
 
    for (tmpPtr1 = constraint1->restrictionList, tmpPtr2 = constraint2->restrictionList;
         (tmpPtr1 != NULL) && (tmpPtr2 != NULL);
@@ -398,7 +428,7 @@ globle struct constraintRecord *AddConstraint(
   struct constraintRecord *theConstraint)
   {
    struct constraintRecord *tmpPtr;
-   int hashValue;
+   unsigned long hashValue;
 
    if (theConstraint == NULL) return(NULL);
 
@@ -434,6 +464,10 @@ static void InstallConstraintRecord(
   CONSTRAINT_RECORD *constraints)
   {
    struct expr *tempExpr;
+
+   tempExpr = AddHashedExpression(theEnv,constraints->classList);
+   ReturnExpression(theEnv,constraints->classList);
+   constraints->classList = tempExpr;
 
    tempExpr = AddHashedExpression(theEnv,constraints->restrictionList);
    ReturnExpression(theEnv,constraints->restrictionList);
@@ -478,7 +512,7 @@ globle int SDCCommand(
 
    EnvRtnUnknown(theEnv,1,&arg_ptr);
 
-   if ((arg_ptr.value == SymbolData(theEnv)->FalseSymbol) && (arg_ptr.type == SYMBOL))
+   if ((arg_ptr.value == EnvFalseSymbol(theEnv)) && (arg_ptr.type == SYMBOL))
      { EnvSetDynamicConstraintChecking(theEnv,FALSE); }
    else
      { EnvSetDynamicConstraintChecking(theEnv,TRUE); }
@@ -520,7 +554,7 @@ globle int SSCCommand(
 
    EnvRtnUnknown(theEnv,1,&arg_ptr);
 
-   if ((arg_ptr.value == SymbolData(theEnv)->FalseSymbol) && (arg_ptr.type == SYMBOL))
+   if ((arg_ptr.value == EnvFalseSymbol(theEnv)) && (arg_ptr.type == SYMBOL))
      { EnvSetStaticConstraintChecking(theEnv,FALSE); }
    else
      { EnvSetStaticConstraintChecking(theEnv,TRUE); }
@@ -549,7 +583,7 @@ globle int GSCCommand(
 /* EnvSetDynamicConstraintChecking: C access routine  */
 /*   for the set-dynamic-constraint-checking command. */
 /******************************************************/
-globle BOOLEAN EnvSetDynamicConstraintChecking(
+globle intBool EnvSetDynamicConstraintChecking(
   void *theEnv,
   int value)
   {
@@ -563,7 +597,7 @@ globle BOOLEAN EnvSetDynamicConstraintChecking(
 /* EnvGetDynamicConstraintChecking: C access routine  */
 /*   for the get-dynamic-constraint-checking command. */
 /******************************************************/
-globle BOOLEAN EnvGetDynamicConstraintChecking(
+globle intBool EnvGetDynamicConstraintChecking(
   void *theEnv)
   { 
    return(ConstraintData(theEnv)->DynamicConstraintChecking); 
@@ -573,7 +607,7 @@ globle BOOLEAN EnvGetDynamicConstraintChecking(
 /* EnvSetStaticConstraintChecking: C access routine  */
 /*   for the set-static-constraint-checking command. */
 /*****************************************************/
-globle BOOLEAN EnvSetStaticConstraintChecking(
+globle intBool EnvSetStaticConstraintChecking(
   void *theEnv,
   int value)
   {
@@ -588,9 +622,38 @@ globle BOOLEAN EnvSetStaticConstraintChecking(
 /* EnvGetStaticConstraintChecking: C access routine  */
 /*   for the get-static-constraint-checking command. */
 /*****************************************************/
-globle BOOLEAN EnvGetStaticConstraintChecking(
+globle intBool EnvGetStaticConstraintChecking(
   void *theEnv)
   {    
    return(ConstraintData(theEnv)->StaticConstraintChecking); 
   }
 
+/*#####################################*/
+/* ALLOW_ENVIRONMENT_GLOBALS Functions */
+/*#####################################*/
+
+#if ALLOW_ENVIRONMENT_GLOBALS
+
+globle intBool SetDynamicConstraintChecking(
+  int value)
+  {
+   return EnvSetDynamicConstraintChecking(GetCurrentEnvironment(),value);
+  }
+
+globle intBool GetDynamicConstraintChecking()
+  { 
+   return EnvGetDynamicConstraintChecking(GetCurrentEnvironment());
+  }
+
+globle intBool SetStaticConstraintChecking(
+  int value)
+  {
+   return EnvSetStaticConstraintChecking(GetCurrentEnvironment(),value);
+  }
+
+globle intBool GetStaticConstraintChecking()
+  {    
+   return EnvGetStaticConstraintChecking(GetCurrentEnvironment());
+  }
+
+#endif

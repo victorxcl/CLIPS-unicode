@@ -1,7 +1,7 @@
    /*******************************************************/
    /*      "C" Language Integrated Production System      */
    /*                                                     */
-   /*             CLIPS Version 6.22  06/15/04            */
+   /*             CLIPS Version 6.30  08/16/14            */
    /*                                                     */
    /*              PREDICATE FUNCTIONS MODULE             */
    /*******************************************************/
@@ -19,6 +19,16 @@
 /* Contributing Programmer(s):                               */
 /*                                                           */
 /* Revision History:                                         */
+/*                                                           */
+/*      6.23: Correction for FalseSymbol/TrueSymbol. DR0859  */
+/*                                                           */
+/*      6.24: Renamed BOOLEAN macro type to intBool.         */
+/*                                                           */
+/*      6.30: Support for long long integers.                */
+/*                                                           */
+/*            Removed conditional code for unsupported       */
+/*            compilers/operating systems (IBM_MCW and       */
+/*            MAC_MCW).                                      */
 /*                                                           */
 /*************************************************************/
 
@@ -73,7 +83,7 @@ globle void PredicateFunctionDefinitions(
    EnvDefineFunction2(theEnv,"sequencep",'b', MultifieldpFunction, "MultifieldpFunction", "11");
    EnvDefineFunction2(theEnv,"pointerp", 'b', PointerpFunction, "PointerpFunction", "11");
 #else
-#if MAC_MCW || IBM_MCW
+#if MAC_XCD
 #pragma unused(theEnv)
 #endif
 #endif
@@ -83,7 +93,7 @@ globle void PredicateFunctionDefinitions(
 /* EqFunction: H/L access routine   */
 /*   for the eq function.           */
 /************************************/
-globle BOOLEAN EqFunction(
+globle intBool EqFunction(
   void *theEnv)
   {
    DATA_OBJECT item, nextItem;
@@ -141,7 +151,7 @@ globle BOOLEAN EqFunction(
 /* NeqFunction: H/L access routine   */
 /*   for the neq function.           */
 /*************************************/
-globle BOOLEAN NeqFunction(
+globle intBool NeqFunction(
   void *theEnv)
   {
    DATA_OBJECT item, nextItem;
@@ -196,7 +206,7 @@ globle BOOLEAN NeqFunction(
 /* StringpFunction: H/L access routine   */
 /*   for the stringp function.           */
 /*****************************************/
-globle BOOLEAN StringpFunction(
+globle intBool StringpFunction(
   void *theEnv)
   {
    DATA_OBJECT item;
@@ -215,7 +225,7 @@ globle BOOLEAN StringpFunction(
 /* SymbolpFunction: H/L access routine   */
 /*   for the symbolp function.           */
 /*****************************************/
-globle BOOLEAN SymbolpFunction(
+globle intBool SymbolpFunction(
   void *theEnv)
   {
    DATA_OBJECT item;
@@ -234,7 +244,7 @@ globle BOOLEAN SymbolpFunction(
 /* LexemepFunction: H/L access routine   */
 /*   for the lexemep function.           */
 /*****************************************/
-globle BOOLEAN LexemepFunction(
+globle intBool LexemepFunction(
   void *theEnv)
   {
    DATA_OBJECT item;
@@ -253,7 +263,7 @@ globle BOOLEAN LexemepFunction(
 /* NumberpFunction: H/L access routine   */
 /*   for the numberp function.           */
 /*****************************************/
-globle BOOLEAN NumberpFunction(
+globle intBool NumberpFunction(
   void *theEnv)
   {
    DATA_OBJECT item;
@@ -272,7 +282,7 @@ globle BOOLEAN NumberpFunction(
 /* FloatpFunction: H/L access routine   */
 /*   for the floatp function.           */
 /****************************************/
-globle BOOLEAN FloatpFunction(
+globle intBool FloatpFunction(
   void *theEnv)
   {
    DATA_OBJECT item;
@@ -291,7 +301,7 @@ globle BOOLEAN FloatpFunction(
 /* IntegerpFunction: H/L access routine   */
 /*   for the integerp function.           */
 /******************************************/
-globle BOOLEAN IntegerpFunction(
+globle intBool IntegerpFunction(
   void *theEnv)
   {
    DATA_OBJECT item;
@@ -309,7 +319,7 @@ globle BOOLEAN IntegerpFunction(
 /* MultifieldpFunction: H/L access routine   */
 /*   for the multifieldp function.           */
 /*********************************************/
-globle BOOLEAN MultifieldpFunction(
+globle intBool MultifieldpFunction(
   void *theEnv)
   {
    DATA_OBJECT item;
@@ -327,7 +337,7 @@ globle BOOLEAN MultifieldpFunction(
 /* PointerpFunction: H/L access routine   */
 /*   for the pointerp function.           */
 /******************************************/
-globle BOOLEAN PointerpFunction(
+globle intBool PointerpFunction(
   void *theEnv)
   {
    DATA_OBJECT item;
@@ -345,7 +355,7 @@ globle BOOLEAN PointerpFunction(
 /* NotFunction: H/L access routine   */
 /*   for the not function.           */
 /*************************************/
-globle BOOLEAN NotFunction(
+globle intBool NotFunction(
   void *theEnv)
   {
    EXPRESSION *theArgument;
@@ -356,7 +366,7 @@ globle BOOLEAN NotFunction(
 
    if (EvaluateExpression(theEnv,theArgument,&result)) return(FALSE);
 
-   if ((result.value == SymbolData(theEnv)->FalseSymbol) && (result.type == SYMBOL))
+   if ((result.value == EnvFalseSymbol(theEnv)) && (result.type == SYMBOL))
      { return(TRUE); }
    
    return(FALSE);
@@ -366,7 +376,7 @@ globle BOOLEAN NotFunction(
 /* AndFunction: H/L access routine   */
 /*   for the and function.           */
 /*************************************/
-globle BOOLEAN AndFunction(
+globle intBool AndFunction(
   void *theEnv)
   {
    EXPRESSION *theArgument;
@@ -377,7 +387,7 @@ globle BOOLEAN AndFunction(
         theArgument = GetNextArgument(theArgument))
      {
       if (EvaluateExpression(theEnv,theArgument,&result)) return(FALSE);
-      if ((result.value == SymbolData(theEnv)->FalseSymbol) && (result.type == SYMBOL))
+      if ((result.value == EnvFalseSymbol(theEnv)) && (result.type == SYMBOL))
         { return(FALSE); }
      }
 
@@ -388,7 +398,7 @@ globle BOOLEAN AndFunction(
 /* OrFunction: H/L access routine   */
 /*   for the or function.           */
 /************************************/
-globle BOOLEAN OrFunction(
+globle intBool OrFunction(
   void *theEnv)
   {
    EXPRESSION *theArgument;
@@ -400,7 +410,7 @@ globle BOOLEAN OrFunction(
      {
       if (EvaluateExpression(theEnv,theArgument,&result)) return(FALSE);
 
-      if ((result.value != SymbolData(theEnv)->FalseSymbol) || (result.type != SYMBOL))
+      if ((result.value != EnvFalseSymbol(theEnv)) || (result.type != SYMBOL))
         { return(TRUE); }
      }
 
@@ -411,7 +421,7 @@ globle BOOLEAN OrFunction(
 /* LessThanOrEqualFunction: H/L access   */
 /*   routine for the <= function.        */
 /*****************************************/
-globle BOOLEAN LessThanOrEqualFunction(
+globle intBool LessThanOrEqualFunction(
   void *theEnv)
   {
    EXPRESSION *theArgument;
@@ -480,7 +490,7 @@ globle BOOLEAN LessThanOrEqualFunction(
 /* GreaterThanOrEqualFunction: H/L access   */
 /*   routine for the >= function.           */
 /********************************************/
-globle BOOLEAN GreaterThanOrEqualFunction(
+globle intBool GreaterThanOrEqualFunction(
   void *theEnv)
   {
    EXPRESSION *theArgument;
@@ -549,7 +559,7 @@ globle BOOLEAN GreaterThanOrEqualFunction(
 /* LessThanFunction: H/L access   */
 /*   routine for the < function.  */
 /**********************************/
-globle BOOLEAN LessThanFunction(
+globle intBool LessThanFunction(
   void *theEnv)
   {
    EXPRESSION *theArgument;
@@ -619,7 +629,7 @@ globle BOOLEAN LessThanFunction(
 /* GreaterThanFunction: H/L access   */
 /*   routine for the > function.     */
 /*************************************/
-globle BOOLEAN GreaterThanFunction(
+globle intBool GreaterThanFunction(
   void *theEnv)
   {
    EXPRESSION *theArgument;
@@ -689,7 +699,7 @@ globle BOOLEAN GreaterThanFunction(
 /* NumericEqualFunction: H/L access   */
 /*   routine for the = function.      */
 /**************************************/
-globle BOOLEAN NumericEqualFunction(
+globle intBool NumericEqualFunction(
   void *theEnv)
   {
    EXPRESSION *theArgument;
@@ -756,7 +766,7 @@ globle BOOLEAN NumericEqualFunction(
 /* NumericNotEqualFunction: H/L access   */
 /*   routine for the <> function.        */
 /*****************************************/
-globle BOOLEAN NumericNotEqualFunction(
+globle intBool NumericNotEqualFunction(
   void *theEnv)
   {
    EXPRESSION *theArgument;
@@ -822,11 +832,11 @@ globle BOOLEAN NumericNotEqualFunction(
 /* OddpFunction: H/L access routine   */
 /*   for the oddp function.           */
 /**************************************/
-globle BOOLEAN OddpFunction(
+globle intBool OddpFunction(
   void *theEnv)
   {
    DATA_OBJECT item;
-   long num, halfnum;
+   long long num, halfnum;
 
    if (EnvArgCountCheck(theEnv,"oddp",EXACTLY,1) == -1) return(FALSE);
    if (EnvArgTypeCheck(theEnv,"oddp",1,INTEGER,&item) == FALSE) return(FALSE);
@@ -843,11 +853,11 @@ globle BOOLEAN OddpFunction(
 /* EvenpFunction: H/L access routine   */
 /*   for the evenp function.           */
 /***************************************/
-globle BOOLEAN EvenpFunction(
+globle intBool EvenpFunction(
   void *theEnv)
   {
    DATA_OBJECT item;
-   long num, halfnum;
+   long long num, halfnum;
 
    if (EnvArgCountCheck(theEnv,"evenp",EXACTLY,1) == -1) return(FALSE);
    if (EnvArgTypeCheck(theEnv,"evenp",1,INTEGER,&item) == FALSE) return(FALSE);

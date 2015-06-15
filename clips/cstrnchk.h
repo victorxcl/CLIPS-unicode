@@ -1,7 +1,7 @@
    /*******************************************************/
    /*      "C" Language Integrated Production System      */
    /*                                                     */
-   /*             CLIPS Version 6.20  01/31/02            */
+   /*             CLIPS Version 6.30  08/22/14            */
    /*                                                     */
    /*            CONSTRAINT CHECKING HEADER FILE          */
    /*******************************************************/
@@ -16,6 +16,23 @@
 /* Contributing Programmer(s):                               */
 /*                                                           */
 /* Revision History:                                         */
+/*                                                           */
+/*      6.24: Added allowed-classes slot facet.              */
+/*                                                           */
+/*            Renamed BOOLEAN macro type to intBool.         */
+/*                                                           */
+/*      6.30: Removed conditional code for unsupported       */
+/*            compilers/operating systems (IBM_MCW and       */
+/*            MAC_MCW).                                      */
+/*                                                           */
+/*            Support for long long integers.                */
+/*                                                           */
+/*            Added const qualifiers to remove C++           */
+/*            deprecation warnings.                          */
+/*                                                           */
+/*            Dynamic constraint checking for the            */
+/*            allowed-classes constraint now searches        */
+/*            imported modules.                              */
 /*                                                           */
 /*************************************************************/
 
@@ -45,12 +62,14 @@
 #define ALLOWED_VALUES_VIOLATION        3
 #define FUNCTION_RETURN_TYPE_VIOLATION  4
 #define CARDINALITY_VIOLATION           5
+#define ALLOWED_CLASSES_VIOLATION       6
 
-   LOCALE BOOLEAN                        CheckCardinalityConstraint(void *,long,CONSTRAINT_RECORD *);
-   LOCALE BOOLEAN                        CheckAllowedValuesConstraint(int,void *,CONSTRAINT_RECORD *);
+   LOCALE intBool                        CheckCardinalityConstraint(void *,long,CONSTRAINT_RECORD *);
+   LOCALE intBool                        CheckAllowedValuesConstraint(int,void *,CONSTRAINT_RECORD *);
+   LOCALE intBool                        CheckAllowedClassesConstraint(void *,int,void *,CONSTRAINT_RECORD *);
    LOCALE int                            ConstraintCheckExpressionChain(void *,struct expr *,
                                                                      CONSTRAINT_RECORD *);
-   LOCALE void                           ConstraintViolationErrorMessage(void *,char *,char *,int,int,
+   LOCALE void                           ConstraintViolationErrorMessage(void *,const char *,const char *,int,int,
                                                                       struct symbolHashNode *,
                                                                       int,int,CONSTRAINT_RECORD *,
                                                                       int);
@@ -61,10 +80,10 @@
                                                                 CONSTRAINT_RECORD *);
 #endif
 #if (! RUN_TIME)
-   LOCALE BOOLEAN                        UnmatchableConstraint(struct constraintRecord *);
+   LOCALE intBool                        UnmatchableConstraint(struct constraintRecord *);
 #endif
 
-#endif
+#endif /* _H_cstrnchk */
 
 
 

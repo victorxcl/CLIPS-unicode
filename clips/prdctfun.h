@@ -1,7 +1,7 @@
    /*******************************************************/
    /*      "C" Language Integrated Production System      */
    /*                                                     */
-   /*             CLIPS Version 6.20  01/31/02            */
+   /*             CLIPS Version 6.30  08/16/14            */
    /*                                                     */
    /*            PREDICATE FUNCTIONS HEADER FILE          */
    /*******************************************************/
@@ -15,6 +15,16 @@
 /* Contributing Programmer(s):                               */
 /*                                                           */
 /* Revision History:                                         */
+/*                                                           */
+/*      6.23: Correction for FalseSymbol/TrueSymbol. DR0859  */
+/*                                                           */
+/*      6.24: Renamed BOOLEAN macro type to intBool.         */
+/*                                                           */
+/*      6.30: Support for long long integers.                */
+/*                                                           */
+/*            Removed conditional code for unsupported       */
+/*            compilers/operating systems (IBM_MCW and       */
+/*            MAC_MCW).                                      */
 /*                                                           */
 /*************************************************************/
 
@@ -33,29 +43,29 @@
 #endif
 
    LOCALE void                           PredicateFunctionDefinitions(void *);
-   LOCALE BOOLEAN                        EqFunction(void *);
-   LOCALE BOOLEAN                        NeqFunction(void *);
-   LOCALE BOOLEAN                        StringpFunction(void *);
-   LOCALE BOOLEAN                        SymbolpFunction(void *);
-   LOCALE BOOLEAN                        LexemepFunction(void *);
-   LOCALE BOOLEAN                        NumberpFunction(void *);
-   LOCALE BOOLEAN                        FloatpFunction(void *);
-   LOCALE BOOLEAN                        IntegerpFunction(void *);
-   LOCALE BOOLEAN                        MultifieldpFunction(void *);
-   LOCALE BOOLEAN                        PointerpFunction(void *);
-   LOCALE BOOLEAN                        NotFunction(void *);
-   LOCALE BOOLEAN                        AndFunction(void *);
-   LOCALE BOOLEAN                        OrFunction(void *);
-   LOCALE BOOLEAN                        LessThanOrEqualFunction(void *);
-   LOCALE BOOLEAN                        GreaterThanOrEqualFunction(void *);
-   LOCALE BOOLEAN                        LessThanFunction(void *);
-   LOCALE BOOLEAN                        GreaterThanFunction(void *);
-   LOCALE BOOLEAN                        NumericEqualFunction(void *);
-   LOCALE BOOLEAN                        NumericNotEqualFunction(void *);
-   LOCALE BOOLEAN                        OddpFunction(void *);
-   LOCALE BOOLEAN                        EvenpFunction(void *);
+   LOCALE intBool                        EqFunction(void *);
+   LOCALE intBool                        NeqFunction(void *);
+   LOCALE intBool                        StringpFunction(void *);
+   LOCALE intBool                        SymbolpFunction(void *);
+   LOCALE intBool                        LexemepFunction(void *);
+   LOCALE intBool                        NumberpFunction(void *);
+   LOCALE intBool                        FloatpFunction(void *);
+   LOCALE intBool                        IntegerpFunction(void *);
+   LOCALE intBool                        MultifieldpFunction(void *);
+   LOCALE intBool                        PointerpFunction(void *);
+   LOCALE intBool                        NotFunction(void *);
+   LOCALE intBool                        AndFunction(void *);
+   LOCALE intBool                        OrFunction(void *);
+   LOCALE intBool                        LessThanOrEqualFunction(void *);
+   LOCALE intBool                        GreaterThanOrEqualFunction(void *);
+   LOCALE intBool                        LessThanFunction(void *);
+   LOCALE intBool                        GreaterThanFunction(void *);
+   LOCALE intBool                        NumericEqualFunction(void *);
+   LOCALE intBool                        NumericNotEqualFunction(void *);
+   LOCALE intBool                        OddpFunction(void *);
+   LOCALE intBool                        EvenpFunction(void *);
 
-#endif
+#endif /* _H_prdctfun */
 
 
 

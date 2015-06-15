@@ -1,7 +1,7 @@
    /*******************************************************/
    /*      "C" Language Integrated Production System      */
    /*                                                     */
-   /*             CLIPS Version 6.20  01/31/02            */
+   /*             CLIPS Version 6.30  08/16/14            */
    /*                                                     */
    /*            CONSTRAINT OPERATIONS MODULE             */
    /*******************************************************/
@@ -17,6 +17,8 @@
 /* Contributing Programmer(s):                               */
 /*                                                           */
 /* Revision History:                                         */
+/*                                                           */
+/*      6.24: Added allowed-classes slot facet.              */
 /*                                                           */
 /*************************************************************/
 
@@ -55,6 +57,10 @@
                                                                     CONSTRAINT_RECORD *,
                                                                     CONSTRAINT_RECORD *,
                                                                     CONSTRAINT_RECORD *);
+   static void                     IntersectAllowedClassExpressions(void *,
+                                                                    CONSTRAINT_RECORD *,
+                                                                    CONSTRAINT_RECORD *,
+                                                                    CONSTRAINT_RECORD *);
    static int                      FindItemInExpression(int,void *,int,struct expr *);
    static void                     UpdateRestrictionFlags(CONSTRAINT_RECORD *);
 #if (! BLOAD_ONLY)
@@ -71,6 +77,10 @@
                                                   struct expr *,struct expr *,
                                                   CONSTRAINT_RECORD *);
    static void                     UnionAllowedValueExpressions(void *,
+                                                                CONSTRAINT_RECORD *,
+                                                                CONSTRAINT_RECORD *,
+                                                                CONSTRAINT_RECORD *);
+   static void                     UnionAllowedClassExpressions(void *,
                                                                 CONSTRAINT_RECORD *,
                                                                 CONSTRAINT_RECORD *,
                                                                 CONSTRAINT_RECORD *);
@@ -180,15 +190,17 @@ globle struct constraintRecord *IntersectConstraints(
       rv->stringRestriction = (c1->stringRestriction || c2->stringRestriction);
       rv->floatRestriction = (c1->floatRestriction || c2->floatRestriction);
       rv->integerRestriction = (c1->integerRestriction || c2->integerRestriction);
+      rv->classRestriction = (c1->classRestriction || c2->classRestriction);
       rv->instanceNameRestriction = (c1->instanceNameRestriction || c2->instanceNameRestriction);
      }
 
-   /*============================================*/
-   /* Intersect the allowed values list, the min */
-   /* and max values, and the range values.      */
-   /*============================================*/
+   /*==================================================*/
+   /* Intersect the allowed values list, allowed class */
+   /* list, min and max values, and the range values.  */
+   /*==================================================*/
 
    IntersectAllowedValueExpressions(theEnv,c1,c2,rv);
+   IntersectAllowedClassExpressions(theEnv,c1,c2,rv);
    IntersectNumericExpressions(theEnv,c1,c2,rv,TRUE);
    IntersectNumericExpressions(theEnv,c1,c2,rv,FALSE);
 
@@ -283,7 +295,71 @@ static void IntersectAllowedValueExpressions(
 
    newConstraint->restrictionList = theHead;
   }
+  
+/*************************************************/
+/* IntersectAllowedClassExpressions: Creates the */
+/*   intersection of two allowed-classes lists.  */
+/*************************************************/
+static void IntersectAllowedClassExpressions(
+  void *theEnv,
+  CONSTRAINT_RECORD *constraint1,
+  CONSTRAINT_RECORD *constraint2,
+  CONSTRAINT_RECORD *newConstraint)
+  {
+   struct expr *theList1, *theList2;
+   struct expr *theHead = NULL, *tmpExpr;
 
+   /*============================================*/
+   /* Loop through each value in allowed-classes */
+   /* list of the first constraint record. Add   */
+   /* each value to a list if it satisfies the   */
+   /* restrictions for both constraint records.  */
+   /*============================================*/
+   
+   for (theList1 = constraint1->classList;
+        theList1 != NULL;
+        theList1 = theList1->nextArg)
+     {
+      if (CheckAllowedClassesConstraint(theEnv,theList1->type,theList1->value,constraint1) &&
+          CheckAllowedClassesConstraint(theEnv,theList1->type,theList1->value,constraint2))
+        {
+         tmpExpr = GenConstant(theEnv,theList1->type,theList1->value);
+         tmpExpr->nextArg = theHead;
+         theHead = tmpExpr;
+        }
+     }
+
+   /*============================================*/
+   /* Loop through each value in allowed-classes */
+   /* list of the second constraint record. Add  */
+   /* each value to a list if it satisfies the   */
+   /* restrictions for both constraint records.  */
+   /*============================================*/
+
+   for (theList2 = constraint2->classList;
+        theList2 != NULL;
+        theList2 = theList2->nextArg)
+     {
+      if (FindItemInExpression(theList2->type,theList2->value,TRUE,theHead))
+        { /* The value is already in the list--Do nothing */ }
+      else if (CheckAllowedClassesConstraint(theEnv,theList2->type,theList2->value,constraint1) &&
+               CheckAllowedClassesConstraint(theEnv,theList2->type,theList2->value,constraint2))
+        {
+         tmpExpr = GenConstant(theEnv,theList2->type,theList2->value);
+         tmpExpr->nextArg = theHead;
+         theHead = tmpExpr;
+        }
+     }
+
+   /*=================================================*/
+   /* Set the allowed classes list for the constraint */
+   /* record to the intersected values of the two     */
+   /* other constraint records.                       */
+   /*=================================================*/
+
+   newConstraint->classList = theHead;
+  }
+  
 /*********************************************************/
 /* IntersectNumericExpressions: Creates the intersection */
 /*   of two range or two min/max-fields constraints.     */
@@ -551,6 +627,8 @@ static int RestrictionOnType(
        (theConstraint->stringRestriction && (theType == STRING)) ||
        (theConstraint->floatRestriction && (theType == FLOAT)) ||
        (theConstraint->integerRestriction && (theType == INTEGER)) ||
+       (theConstraint->classRestriction && ((theType == INSTANCE_ADDRESS) ||
+                                            (theType == INSTANCE_NAME))) ||
        (theConstraint->instanceNameRestriction && (theType == INSTANCE_NAME)))
      { return(TRUE); }
 
@@ -643,6 +721,7 @@ globle struct constraintRecord *UnionConstraints(
       rv->stringRestriction = (c1->stringRestriction && c2->stringRestriction);
       rv->floatRestriction = (c1->floatRestriction && c2->floatRestriction);
       rv->integerRestriction = (c1->integerRestriction && c2->integerRestriction);
+      rv->classRestriction = (c1->classRestriction && c2->classRestriction);
       rv->instanceNameRestriction = (c1->instanceNameRestriction && c2->instanceNameRestriction);
 
       if (c1Changed) SetAnyRestrictionFlags(c1,FALSE);
@@ -655,6 +734,7 @@ globle struct constraintRecord *UnionConstraints(
    /*========================================*/
 
    UnionAllowedValueExpressions(theEnv,c1,c2,rv);
+   UnionAllowedClassExpressions(theEnv,c1,c2,rv);
    UnionNumericExpressions(theEnv,c1,c2,rv,TRUE);
    UnionNumericExpressions(theEnv,c1,c2,rv,FALSE);
 
@@ -948,6 +1028,24 @@ static void UnionRangeMinMaxValueWithList(
          tmpmax = nextmax;
         }
      }
+  }
+
+/***************************************************/
+/* UnionAllowedClassExpressions: Creates the union */
+/*   of two sets of allowed-classes expressions.   */
+/***************************************************/
+static void UnionAllowedClassExpressions(
+  void *theEnv,
+  CONSTRAINT_RECORD *constraint1,
+  CONSTRAINT_RECORD *constraint2,
+  CONSTRAINT_RECORD *newConstraint)
+  {
+   struct expr *theHead = NULL;
+
+   theHead = AddToUnionList(theEnv,constraint1->classList,theHead,newConstraint);
+   theHead = AddToUnionList(theEnv,constraint2->classList,theHead,newConstraint);
+
+   newConstraint->classList = theHead;
   }
 
 /***************************************************/

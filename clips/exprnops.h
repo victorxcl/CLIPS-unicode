@@ -1,7 +1,7 @@
    /*******************************************************/
    /*      "C" Language Integrated Production System      */
    /*                                                     */
-   /*             CLIPS Version 6.20  01/31/02            */
+   /*             CLIPS Version 6.30  08/16/14            */
    /*                                                     */
    /*          EXPRESSION OPERATIONS HEADER FILE          */
    /*******************************************************/
@@ -14,9 +14,16 @@
 /*      Gary D. Riley                                        */
 /*                                                           */
 /* Contributing Programmer(s):                               */
-/*      Brian L. Donnell                                     */
+/*      Brian L. Dantes                                      */
 /*                                                           */
 /* Revision History:                                         */
+/*                                                           */
+/*      6.24: Renamed BOOLEAN macro type to intBool.         */
+/*                                                           */
+/*      6.30: Add NegateExpression function.                 */
+/*                                                           */
+/*            Added const qualifiers to remove C++           */
+/*            deprecation warnings.                          */
 /*                                                           */
 /*************************************************************/
 
@@ -38,21 +45,22 @@
 #define LOCALE extern
 #endif
 
-   LOCALE BOOLEAN                        ConstantExpression(struct expr *);
-   LOCALE void                           PrintExpression(void *,char *,struct expr *);
+   LOCALE intBool                        ConstantExpression(struct expr *);
+   LOCALE void                           PrintExpression(void *,const char *,struct expr *);
    LOCALE long                           ExpressionSize(struct expr *);
    LOCALE int                            CountArguments(struct expr *);
    LOCALE struct expr                   *CopyExpression(void *,struct expr *);
-   LOCALE BOOLEAN                        ExpressionContainsVariables(struct expr *,int);
-   LOCALE BOOLEAN                        IdenticalExpression(struct expr *,struct expr *);
+   LOCALE intBool                        ExpressionContainsVariables(struct expr *,int);
+   LOCALE intBool                        IdenticalExpression(struct expr *,struct expr *);
    LOCALE struct expr                   *GenConstant(void *,unsigned short,void *);
 #if ! RUN_TIME
    LOCALE int                            CheckArgumentAgainstRestriction(void *,struct expr *,int);
 #endif
-   LOCALE BOOLEAN                        ConstantType(int);
+   LOCALE intBool                        ConstantType(int);
    LOCALE struct expr                   *CombineExpressions(void *,struct expr *,struct expr *);
    LOCALE struct expr                   *AppendExpressions(struct expr *,struct expr *);
+   LOCALE struct expr                   *NegateExpression(void *,struct expr *);
 
-#endif
+#endif /* _H_exprnops */
 
 

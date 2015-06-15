@@ -1,7 +1,7 @@
    /*******************************************************/
    /*      "C" Language Integrated Production System      */
    /*                                                     */
-   /*             CLIPS Version 6.20  01/31/02            */
+   /*             CLIPS Version 6.30  08/22/14            */
    /*                                                     */
    /*                SORT FUNCTIONS MODULE                */
    /*******************************************************/
@@ -15,6 +15,15 @@
 /* Contributing Programmer(s):                               */
 /*                                                           */
 /* Revision History:                                         */
+/*                                                           */
+/*      6.23: Correction for FalseSymbol/TrueSymbol. DR0859  */
+/*                                                           */
+/*      6.24: The sort function leaks memory when called     */
+/*            with a multifield value of length zero.        */
+/*            DR0864                                         */
+/*                                                           */
+/*      6.30: Added environment cleanup call function        */
+/*            DeallocateSortFunctionData.                    */
 /*                                                           */
 /*************************************************************/
 
@@ -50,7 +59,8 @@ struct sortFunctionData
                                               unsigned long,unsigned long,unsigned long,
                                               int (*)(void *,DATA_OBJECT *,DATA_OBJECT *));
    static int                     DefaultCompareSwapFunction(void *,DATA_OBJECT *,DATA_OBJECT *);
-
+   static void                    DeallocateSortFunctionData(void *);
+   
 /****************************************/
 /* SortFunctionDefinitions: Initializes */
 /*   the sorting functions.             */
@@ -58,10 +68,20 @@ struct sortFunctionData
 globle void SortFunctionDefinitions(
   void *theEnv)
   {
-   AllocateEnvironmentData(theEnv,SORTFUN_DATA,sizeof(struct sortFunctionData),NULL);
+   AllocateEnvironmentData(theEnv,SORTFUN_DATA,sizeof(struct sortFunctionData),DeallocateSortFunctionData);
 #if ! RUN_TIME
    EnvDefineFunction2(theEnv,"sort",'u', PTIEF SortFunction,"SortFunction","1**w");
 #endif
+  }
+
+/*******************************************************/
+/* DeallocateSortFunctionData: Deallocates environment */
+/*    data for the sort function.                      */
+/*******************************************************/
+static void DeallocateSortFunctionData(
+  void *theEnv)
+  {
+   ReturnExpression(theEnv,SortFunctionData(theEnv)->SortComparisonFunction);
   }
 
 /**************************************/
@@ -83,7 +103,7 @@ static int DefaultCompareSwapFunction(
    SortFunctionData(theEnv)->SortComparisonFunction->argList = NULL;
 
    if ((GetType(returnValue) == SYMBOL) &&
-       (GetValue(returnValue) == SymbolData(theEnv)->FalseSymbol))
+       (GetValue(returnValue) == EnvFalseSymbol(theEnv)))
      { return(FALSE); }
 
    return(TRUE);
@@ -101,7 +121,7 @@ globle void SortFunction(
    DATA_OBJECT *theArguments, *theArguments2;
    DATA_OBJECT theArg;
    struct multifield *theMultifield, *tempMultifield;
-   char *functionName;
+   const char *functionName;
    struct expr *functionReference;
    int argumentSize = 0;
    struct FunctionDefinition *fptr;
@@ -114,7 +134,7 @@ globle void SortFunction(
    /*==================================*/
 
    SetpType(returnValue,SYMBOL);
-   SetpValue(returnValue,SymbolData(theEnv)->FalseSymbol);
+   SetpValue(returnValue,EnvFalseSymbol(theEnv));
 
    /*=============================================*/
    /* The function expects at least one argument. */
@@ -205,7 +225,8 @@ globle void SortFunction(
      }
      
    if (argumentSize == 0)
-     {
+     {   
+      genfree(theEnv,theArguments,(argumentCount - 1) * sizeof(DATA_OBJECT)); /* Bug Fix */
       EnvSetMultifieldErrorValue(theEnv,returnValue);
       ReturnExpression(theEnv,functionReference);
       return;

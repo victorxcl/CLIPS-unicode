@@ -1,22 +1,36 @@
    /*******************************************************/
    /*      "C" Language Integrated Production System      */
    /*                                                     */
-   /*               CLIPS Version 6.20  01/31/02          */
+   /*               CLIPS Version 6.30  08/16/14          */
    /*                                                     */
    /*    OBJECT PATTERN NETWORK CONSTRUCTS-TO-C MODULE    */
    /*******************************************************/
 
-/**************************************************************/
-/* Purpose: Saves object pattern network for constructs-to-c  */
-/*                                                            */
-/* Principal Programmer(s):                                   */
-/*      Brian L. Donnell                                      */
-/*                                                            */
-/* Contributing Programmer(s):                                */
-/*                                                            */
-/* Revision History:                                          */
-/*                                                            */
-/**************************************************************/
+/*************************************************************/
+/* Purpose: Saves object pattern network for constructs-to-c */
+/*                                                           */
+/* Principal Programmer(s):                                  */
+/*      Brian L. Dantes                                      */
+/*                                                           */
+/* Contributing Programmer(s):                               */
+/*                                                           */
+/* Revision History:                                         */
+/*                                                           */
+/*      6.24: Converted INSTANCE_PATTERN_MATCHING to         */
+/*            DEFRULE_CONSTRUCT.                             */
+/*                                                           */
+/*            Added environment parameter to GenClose.       */
+/*                                                           */
+/*      6.30: Added support for path name argument to        */
+/*            constructs-to-c.                               */
+/*                                                           */
+/*            Added support for hashed comparisons to        */
+/*            constants.                                     */
+/*                                                           */
+/*            Added const qualifiers to remove C++           */
+/*            deprecation warnings.                          */
+/*                                                           */
+/*************************************************************/
 /* =========================================
    *****************************************
                EXTERNAL DEFINITIONS
@@ -24,7 +38,7 @@
    ***************************************** */
 #include "setup.h"
 
-#if INSTANCE_PATTERN_MATCHING && (! RUN_TIME) && CONSTRUCT_COMPILER
+#if DEFRULE_CONSTRUCT && OBJECT_SYSTEM && (! RUN_TIME) && CONSTRUCT_COMPILER
 
 #include <stdio.h>
 #define _STDIO_INCLUDED_
@@ -56,10 +70,10 @@
 static void BeforeObjectPatternsToCode(void *);
 static OBJECT_PATTERN_NODE *GetNextObjectPatternNode(OBJECT_PATTERN_NODE *);
 static void InitObjectPatternsCode(void *,FILE *,int,int);
-static int ObjectPatternsToCode(void *,char *,int,FILE *,int,int);
+static int ObjectPatternsToCode(void *,const char *,const char *,char *,int,FILE *,int,int);
 static void IntermediatePatternNodeReference(void *,OBJECT_PATTERN_NODE *,FILE *,int,int);
-static int IntermediatePatternNodesToCode(void *,char *,int,FILE *,int,int,int);
-static int AlphaPatternNodesToCode(void *,char *,int,FILE *,int,int,int);
+static int IntermediatePatternNodesToCode(void *,const char *,const char *,char *,int,FILE *,int,int,int);
+static int AlphaPatternNodesToCode(void *,const char *,const char *,char *,int,FILE *,int,int,int);
 
 /* =========================================
    *****************************************
@@ -246,7 +260,9 @@ static void InitObjectPatternsCode(
  ***********************************************************/
 static int ObjectPatternsToCode(
   void *theEnv,
-  char *fileName,
+  const char *fileName,
+  const char *pathName,
+  char *fileNameBuffer,
   int fileID,
   FILE *headerFP,
   int imageID,
@@ -254,11 +270,11 @@ static int ObjectPatternsToCode(
   {
    int version;
    
-   version = IntermediatePatternNodesToCode(theEnv,fileName,fileID,
-              headerFP,imageID,maxIndices,1);
+   version = IntermediatePatternNodesToCode(theEnv,fileName,pathName,fileNameBuffer,
+                                            fileID,headerFP,imageID,maxIndices,1);
    if (version == 0)
      return(0);
-   if (! AlphaPatternNodesToCode(theEnv,fileName,fileID,headerFP,imageID,maxIndices,version))
+   if (! AlphaPatternNodesToCode(theEnv,fileName,pathName,fileNameBuffer,fileID,headerFP,imageID,maxIndices,version))
      return(0);
    return(1);
   }
@@ -314,7 +330,9 @@ static void IntermediatePatternNodeReference(
  *************************************************************/
 static int IntermediatePatternNodesToCode(
   void *theEnv,
-  char *fileName,
+  const char *fileName,
+  const char *pathName,
+  char *fileNameBuffer,
   int fileID,
   FILE *headerFP,
   int imageID,
@@ -338,7 +356,7 @@ static int IntermediatePatternNodesToCode(
    /* =================================
       Dump the pattern node structures.
       ================================= */
-   if ((fp = NewCFile(theEnv,fileName,fileID,version,FALSE)) == NULL)
+   if ((fp = NewCFile(theEnv,fileName,pathName,fileNameBuffer,fileID,version,FALSE)) == NULL)
      return(0);
    newHeader = TRUE;
 
@@ -356,8 +374,9 @@ static int IntermediatePatternNodesToCode(
                      ObjectPNPrefix(),imageID,arrayVersion);
          newHeader = FALSE;
         }
-      fprintf(fp,"{0,%u,%u,%u,%u,0L,%u,",thePattern->multifieldNode,
+      fprintf(fp,"{0,%u,%u,%u,%u,%u,0L,%u,",thePattern->multifieldNode,
                                         thePattern->endSlot,
+                                        thePattern->selector,
                                         thePattern->whichField,
                                         thePattern->leaveFields,
                                         thePattern->slotNameID);
@@ -381,13 +400,13 @@ static int IntermediatePatternNodesToCode(
       if ((i > maxIndices) || (thePattern == NULL))
         {
          fprintf(fp,"};\n");
-         GenClose(fp);
+         GenClose(theEnv,fp);
          i = 1;
          version++;
          arrayVersion++;
          if (thePattern != NULL)
            {
-            if ((fp = NewCFile(theEnv,fileName,fileID,version,FALSE)) == NULL)
+            if ((fp = NewCFile(theEnv,fileName,pathName,fileNameBuffer,fileID,version,FALSE)) == NULL)
               return(0);
             newHeader = TRUE;
            }
@@ -416,7 +435,9 @@ static int IntermediatePatternNodesToCode(
  ***********************************************************/
 static int AlphaPatternNodesToCode(
   void *theEnv,
-  char *fileName,
+  const char *fileName,
+  const char *pathName,
+  char *fileNameBuffer,
   int fileID,
   FILE *headerFP,
   int imageID,
@@ -438,7 +459,7 @@ static int AlphaPatternNodesToCode(
    /* =================================
       Dump the pattern node structures.
       ================================= */
-   if ((fp = NewCFile(theEnv,fileName,fileID,version,FALSE)) == NULL)
+   if ((fp = NewCFile(theEnv,fileName,pathName,fileNameBuffer,fileID,version,FALSE)) == NULL)
      return(0);
    newHeader = TRUE;
 
@@ -479,13 +500,13 @@ static int AlphaPatternNodesToCode(
       if ((i > maxIndices) || (thePattern == NULL))
         {
          fprintf(fp,"};\n");
-         GenClose(fp);
+         GenClose(theEnv,fp);
          i = 1;
          version++;
          arrayVersion++;
          if (thePattern != NULL)
            {
-            if ((fp = NewCFile(theEnv,fileName,fileID,version,FALSE)) == NULL)
+            if ((fp = NewCFile(theEnv,fileName,pathName,fileNameBuffer,fileID,version,FALSE)) == NULL)
               return(0);
             newHeader = TRUE;
            }

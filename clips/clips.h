@@ -1,7 +1,7 @@
    /*******************************************************/
    /*      "C" Language Integrated Production System      */
    /*                                                     */
-   /*             CLIPS Version 6.22  06/15/04            */
+   /*             CLIPS Version 6.30  08/16/14            */
    /*                                                     */
    /*                   API HEADER FILE                   */
    /*******************************************************/
@@ -16,10 +16,21 @@
 /*                                                           */
 /* Revision History:                                         */
 /*                                                           */
+/*      6.24: Added filertr.h and tmpltfun.h to include      */
+/*            list.                                          */
+/*                                                           */
+/*      6.30: Added classpsr.h, iofun.h, and strngrtr.h to   */
+/*            include list.                                  */
+/*                                                           */
 /*************************************************************/
 
 #ifndef _H_API
 #define _H_API
+
+#ifndef _STDIO_INCLUDED_
+#define _STDIO_INCLUDED_
+#include <stdio.h>
+#endif
 
 #include "setup.h"
 #ifndef _H_argacces
@@ -35,9 +46,13 @@
 #ifndef _H_symbol
 #include "symbol.h"
 #endif
-#ifndef _H_router
+
 #include "router.h"
-#endif
+#include "filertr.h"
+#include "strngrtr.h"
+
+#include "iofun.h"
+
 #include "sysdep.h"
 #include "bmathfun.h"
 #ifndef _H_expressn
@@ -82,6 +97,7 @@
 #if DEFTEMPLATE_CONSTRUCT
 #include "tmpltdef.h"
 #include "tmpltbsc.h"
+#include "tmpltfun.h"
 #include "factcom.h"
 #include "factfun.h"
 #ifndef _H_factmngr
@@ -110,6 +126,7 @@
 #include "classexm.h"
 #include "classinf.h"
 #include "classini.h"
+#include "classpsr.h"
 #include "defins.h"
 #include "inscom.h"
 #include "insfile.h"

@@ -1,7 +1,7 @@
    /*******************************************************/
    /*      "C" Language Integrated Production System      */
    /*                                                     */
-   /*             CLIPS Version 6.21  06/15/03            */
+   /*             CLIPS Version 6.30  08/16/14            */
    /*                                                     */
    /*            CONSTRAINT BLOAD/BSAVE MODULE            */
    /*******************************************************/
@@ -14,9 +14,13 @@
 /*      Gary D. Riley                                        */
 /*                                                           */
 /* Contributing Programmer(s):                               */
-/*      Brian L. Donnell                                     */
+/*      Brian L. Dantes                                      */
 /*                                                           */
 /* Revision History:                                         */
+/*                                                           */
+/*      6.24: Added allowed-classes slot facet.              */
+/*                                                           */
+/*      6.30: Changed integer type/precision.                */
 /*                                                           */
 /*************************************************************/
 
@@ -59,9 +63,11 @@ struct bsaveConstraintRecord
    unsigned int numberRestriction : 1;
    unsigned int floatRestriction : 1;
    unsigned int integerRestriction : 1;
+   unsigned int classRestriction : 1;
    unsigned int instanceNameRestriction : 1;
    unsigned int multifieldsAllowed : 1;
    unsigned int singlefieldsAllowed : 1;
+   long classList;
    long restrictionList;
    long minValue;
    long maxValue;
@@ -131,7 +137,7 @@ globle void WriteNeededConstraints(
    /* constraints in the constraint table.       */
    /*============================================*/
 
-   GenWrite(&numberOfUsedConstraints,(unsigned long) sizeof(unsigned long int),fp);
+   GenWrite(&numberOfUsedConstraints,sizeof(unsigned long int),fp);
    if (numberOfUsedConstraints == 0) return;
 
    for (i = 0 ; i < SIZE_CONSTRAINT_HASH; i++)
@@ -141,8 +147,7 @@ globle void WriteNeededConstraints(
            tmpPtr = tmpPtr->next)
         {
          CopyToBsaveConstraintRecord(theEnv,tmpPtr,&bsaveConstraints);
-         GenWrite(&bsaveConstraints,
-                  (unsigned long) sizeof(BSAVE_CONSTRAINT_RECORD),fp);
+         GenWrite(&bsaveConstraints,sizeof(BSAVE_CONSTRAINT_RECORD),fp);
         }
      }
   }
@@ -173,9 +178,11 @@ static void CopyToBsaveConstraintRecord(
    bsaveConstraints->stringRestriction = constraints->stringRestriction;
    bsaveConstraints->floatRestriction = constraints->floatRestriction;
    bsaveConstraints->integerRestriction = constraints->integerRestriction;
+   bsaveConstraints->classRestriction = constraints->classRestriction;
    bsaveConstraints->instanceNameRestriction = constraints->instanceNameRestriction;
 
    bsaveConstraints->restrictionList = HashedExpressionIndex(theEnv,constraints->restrictionList);
+   bsaveConstraints->classList = HashedExpressionIndex(theEnv,constraints->classList);
    bsaveConstraints->minValue = HashedExpressionIndex(theEnv,constraints->minValue);
    bsaveConstraints->maxValue = HashedExpressionIndex(theEnv,constraints->maxValue);
    bsaveConstraints->minFields = HashedExpressionIndex(theEnv,constraints->minFields);
@@ -191,13 +198,11 @@ static void CopyToBsaveConstraintRecord(
 globle void ReadNeededConstraints(
   void *theEnv)
   {
-   GenReadBinary(theEnv,(void *) &ConstraintData(theEnv)->NumberOfConstraints,(unsigned long)
-                                         sizeof(unsigned long int));
+   GenReadBinary(theEnv,(void *) &ConstraintData(theEnv)->NumberOfConstraints,sizeof(unsigned long int));
    if (ConstraintData(theEnv)->NumberOfConstraints == 0) return;
 
    ConstraintData(theEnv)->ConstraintArray = (CONSTRAINT_RECORD *)
-           genlongalloc(theEnv,(unsigned long) (sizeof(CONSTRAINT_RECORD) *
-                                        ConstraintData(theEnv)->NumberOfConstraints));
+           genalloc(theEnv,(sizeof(CONSTRAINT_RECORD) * ConstraintData(theEnv)->NumberOfConstraints));
 
    BloadandRefresh(theEnv,ConstraintData(theEnv)->NumberOfConstraints,sizeof(BSAVE_CONSTRAINT_RECORD),
                    CopyFromBsaveConstraintRecord);
@@ -236,9 +241,11 @@ static void CopyFromBsaveConstraintRecord(
    constraints->stringRestriction = bsaveConstraints->stringRestriction;
    constraints->floatRestriction = bsaveConstraints->floatRestriction;
    constraints->integerRestriction = bsaveConstraints->integerRestriction;
+   constraints->classRestriction = bsaveConstraints->classRestriction;
    constraints->instanceNameRestriction = bsaveConstraints->instanceNameRestriction;
 
    constraints->restrictionList = HashedExpressionPointer(bsaveConstraints->restrictionList);
+   constraints->classList = HashedExpressionPointer(bsaveConstraints->classList);
    constraints->minValue = HashedExpressionPointer(bsaveConstraints->minValue);
    constraints->maxValue = HashedExpressionPointer(bsaveConstraints->maxValue);
    constraints->minFields = HashedExpressionPointer(bsaveConstraints->minFields);
@@ -255,9 +262,8 @@ globle void ClearBloadedConstraints(
   {
    if (ConstraintData(theEnv)->NumberOfConstraints != 0)
      {
-      genlongfree(theEnv,(void *) ConstraintData(theEnv)->ConstraintArray,
-                  (unsigned long) (sizeof(CONSTRAINT_RECORD) *
-                                  ConstraintData(theEnv)->NumberOfConstraints));
+      genfree(theEnv,(void *) ConstraintData(theEnv)->ConstraintArray,
+                     (sizeof(CONSTRAINT_RECORD) * ConstraintData(theEnv)->NumberOfConstraints));
       ConstraintData(theEnv)->NumberOfConstraints = 0;
      }
   }

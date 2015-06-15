@@ -1,7 +1,7 @@
    /*******************************************************/
    /*      "C" Language Integrated Production System      */
    /*                                                     */
-   /*             CLIPS Version 6.22  06/15/04            */
+   /*             CLIPS Version 6.30  08/16/14            */
    /*                                                     */
    /*                  EXPRESSION MODULE                  */
    /*******************************************************/
@@ -14,9 +14,24 @@
 /*      Gary D. Riley                                        */
 /*                                                           */
 /* Contributing Programmer(s):                               */
-/*      Brian L. Donnell                                     */
+/*      Brian L. Dantes                                      */
 /*                                                           */
 /* Revision History:                                         */
+/*                                                           */
+/*      6.23: Changed name of variable exp to theExp         */
+/*            because of Unix compiler warnings of shadowed  */
+/*            definitions.                                   */
+/*                                                           */
+/*      6.24: Corrected link errors with non-default         */
+/*            setup.h configuration settings.                */
+/*                                                           */
+/*      6.30: Removed conditional code for unsupported       */
+/*            compilers/operating systems (IBM_MCW and       */
+/*            MAC_MCW).                                      */
+/*                                                           */
+/*            Changed integer type/precision.                */
+/*                                                           */
+/*            Changed expression hashing value.              */
 /*                                                           */
 /*************************************************************/
 
@@ -92,7 +107,9 @@ static void DeallocateExpressionData(
    int i;
    EXPRESSION_HN *tmpPtr, *nextPtr;
    
+#if (BLOAD || BLOAD_ONLY || BLOAD_AND_BSAVE)
    if (! Bloaded(theEnv))
+#endif
      {
       for (i = 0; i < EXPRESSION_HASH_SIZE; i++)
         {
@@ -110,7 +127,7 @@ static void DeallocateExpressionData(
    rm(theEnv,ExpressionData(theEnv)->ExpressionHashTable,
       (int) (sizeof(EXPRESSION_HN *) * EXPRESSION_HASH_SIZE));
 #else
-#if MAC_MCW || IBM_MCW
+#if MAC_XCD
 #pragma unused(theEnv)
 #endif
 #endif
@@ -118,7 +135,7 @@ static void DeallocateExpressionData(
 #if (BLOAD || BLOAD_ONLY || BLOAD_AND_BSAVE)
    if ((ExpressionData(theEnv)->NumberOfExpressions != 0) && Bloaded(theEnv))
      {
-      genlongfree(theEnv,(void *) ExpressionData(theEnv)->ExpressionArray,
+      genfree(theEnv,(void *) ExpressionData(theEnv)->ExpressionArray,
                   ExpressionData(theEnv)->NumberOfExpressions * sizeof(struct expr));
      }
 #endif
@@ -301,20 +318,20 @@ globle void ReturnExpression(
  ***************************************************/
 static EXPRESSION_HN *FindHashedExpression(
   void *theEnv,
-  EXPRESSION *exp,
+  EXPRESSION *theExp,
   unsigned *hashval,
   EXPRESSION_HN **prv)
   {
    EXPRESSION_HN *exphash;
 
-   if (exp == NULL)
+   if (theExp == NULL)
      return(NULL);
-   *hashval = HashExpression(exp);
+   *hashval = HashExpression(theExp);
    *prv = NULL;
    exphash = ExpressionData(theEnv)->ExpressionHashTable[*hashval];
    while (exphash != NULL)
      {
-      if (IdenticalExpression(exphash->exp,exp))
+      if (IdenticalExpression(exphash->exp,theExp))
         return(exphash);
       *prv = exphash;
       exphash = exphash->next;
@@ -332,17 +349,24 @@ static EXPRESSION_HN *FindHashedExpression(
   NOTES        : None
  ***************************************************/
 static unsigned HashExpression(
-  EXPRESSION *exp)
+  EXPRESSION *theExp)
   {
    unsigned long tally = PRIME_THREE;
-
-   if (exp->argList != NULL)
-     tally += HashExpression(exp->argList) * PRIME_ONE;
-   while (exp != NULL)
+   union
      {
-      tally += (unsigned long) (exp->type * PRIME_TWO);
-      tally += (unsigned long) exp->value;
-      exp = exp->nextArg;
+      void *vv;
+      unsigned long uv;
+     } fis;
+     
+   if (theExp->argList != NULL)
+     tally += HashExpression(theExp->argList) * PRIME_ONE;
+   while (theExp != NULL)
+     {
+      tally += (unsigned long) (theExp->type * PRIME_TWO);
+      fis.uv = 0;
+      fis.vv = theExp->value;
+      tally += fis.uv;
+      theExp = theExp->nextArg;
      }
    return((unsigned) (tally % EXPRESSION_HASH_SIZE));
   }
@@ -363,12 +387,12 @@ static unsigned HashExpression(
  ***************************************************/
 globle void RemoveHashedExpression(
   void *theEnv,
-  EXPRESSION *exp)
+  EXPRESSION *theExp)
   {
    EXPRESSION_HN *exphash,*prv;
    unsigned hashval;
 
-   exphash = FindHashedExpression(theEnv,exp,&hashval,&prv);
+   exphash = FindHashedExpression(theEnv,theExp,&hashval,&prv);
    if (exphash == NULL)
      return;
    if (--exphash->count != 0)
@@ -402,13 +426,13 @@ globle void RemoveHashedExpression(
  *****************************************************/
 globle EXPRESSION *AddHashedExpression(
   void *theEnv,
-  EXPRESSION *exp)
+  EXPRESSION *theExp)
   {
    EXPRESSION_HN *prv,*exphash;
    unsigned hashval;
 
-   if (exp == NULL) return(NULL);
-   exphash = FindHashedExpression(theEnv,exp,&hashval,&prv);
+   if (theExp == NULL) return(NULL);
+   exphash = FindHashedExpression(theEnv,theExp,&hashval,&prv);
    if (exphash != NULL)
      {
       exphash->count++;
@@ -417,7 +441,7 @@ globle EXPRESSION *AddHashedExpression(
    exphash = get_struct(theEnv,exprHashNode);
    exphash->hashval = hashval;
    exphash->count = 1;
-   exphash->exp = PackExpression(theEnv,exp);
+   exphash->exp = PackExpression(theEnv,theExp);
    ExpressionInstall(theEnv,exphash->exp);
    exphash->next = ExpressionData(theEnv)->ExpressionHashTable[exphash->hashval];
    ExpressionData(theEnv)->ExpressionHashTable[exphash->hashval] = exphash;
@@ -440,14 +464,14 @@ globle EXPRESSION *AddHashedExpression(
  ***************************************************/
 globle long HashedExpressionIndex(
   void *theEnv,
-  EXPRESSION *exp)
+  EXPRESSION *theExp)
   {
    EXPRESSION_HN *exphash,*prv;
    unsigned hashval;
 
-   if (exp == NULL)
+   if (theExp == NULL)
      return(-1L);
-   exphash = FindHashedExpression(theEnv,exp,&hashval,&prv);
+   exphash = FindHashedExpression(theEnv,theExp,&hashval,&prv);
    return((exphash != NULL) ? exphash->bsaveID : -1L);
   }
 

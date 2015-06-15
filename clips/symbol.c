@@ -1,7 +1,7 @@
    /*******************************************************/
    /*      "C" Language Integrated Production System      */
    /*                                                     */
-   /*             CLIPS Version 6.21  06/15/03            */
+   /*             CLIPS Version 6.30  02/03/15            */
    /*                                                     */
    /*                    SYMBOL MODULE                    */
    /*******************************************************/
@@ -17,9 +17,44 @@
 /*      Gary D. Riley                                        */
 /*                                                           */
 /* Contributing Programmer(s):                               */
-/*      Brian L. Donnell                                     */
+/*      Brian L. Dantes                                      */
 /*                                                           */
 /* Revision History:                                         */
+/*                                                           */
+/*      6.23: Correction for FalseSymbol/TrueSymbol. DR0859  */
+/*                                                           */
+/*      6.24: CLIPS crashing on AMD64 processor in the       */
+/*            function used to generate a hash value for     */
+/*            integers. DR0871                               */
+/*                                                           */
+/*            Support for run-time programs directly passing */
+/*            the hash tables for initialization.            */
+/*                                                           */
+/*            Corrected code generating compilation          */
+/*            warnings.                                      */
+/*                                                           */
+/*      6.30: Changed integer type/precision.                */
+/*                                                           */
+/*            Removed conditional code for unsupported       */
+/*            compilers/operating systems (IBM_MCW,          */
+/*            MAC_MCW, and IBM_TBC).                         */
+/*                                                           */
+/*            Support for hashing EXTERNAL_ADDRESS data      */
+/*            type.                                          */
+/*                                                           */
+/*            Support for long long integers.                */
+/*                                                           */
+/*            Changed garbage collection algorithm.          */
+/*                                                           */
+/*            Used genstrcpy instead of strcpy.              */
+/*                                                           */             
+/*            Added support for external address hash table  */
+/*            and subtyping.                                 */
+/*                                                           */
+/*            Added const qualifiers to remove C++           */
+/*            deprecation warnings.                          */
+/*                                                           */
+/*            Converted API macros to function calls.        */
 /*                                                           */
 /*************************************************************/
 
@@ -38,6 +73,8 @@
 #include "router.h"
 #include "utility.h"
 #include "argacces.h"
+#include "sysdep.h"
+
 #include "symbol.h"
 
 /***************/
@@ -59,12 +96,12 @@
 
    static void                    RemoveHashNode(void *,GENERIC_HN *,GENERIC_HN **,int,int);
    static void                    AddEphemeralHashNode(void *,GENERIC_HN *,struct ephemeron **,
-                                                       int,int);
+                                                       int,int,int);
    static void                    RemoveEphemeralHashNodes(void *,struct ephemeron **,
                                                            GENERIC_HN **,
                                                            int,int,int);
-   static char                   *StringWithinString(char *,char *);
-   static unsigned                CommonPrefixLength(char *,char *);
+   static const char             *StringWithinString(const char *,const char *);
+   static size_t                  CommonPrefixLength(const char *,const char *);
    static void                    DeallocateSymbolData(void *);
 
 /*******************************************************/
@@ -73,11 +110,21 @@
 /*   the TrueSymbol and FalseSymbol.                   */
 /*******************************************************/
 globle void InitializeAtomTables(
-  void *theEnv)
+  void *theEnv,
+  struct symbolHashNode **symbolTable,
+  struct floatHashNode **floatTable,
+  struct integerHashNode **integerTable,
+  struct bitMapHashNode **bitmapTable,
+  struct externalAddressHashNode **externalAddressTable)
   {
-#if ! RUN_TIME
-   unsigned long i;
+#if MAC_XCD
+#pragma unused(symbolTable)
+#pragma unused(floatTable)
+#pragma unused(integerTable)
+#pragma unused(bitmapTable)
+#pragma unused(externalAddressTable)
 #endif
+   unsigned long i;
    
    AllocateEnvironmentData(theEnv,SYMBOL_DATA,sizeof(struct symbolData),DeallocateSymbolData);
 
@@ -98,6 +145,9 @@ globle void InitializeAtomTables(
    SymbolData(theEnv)->BitMapTable = (BITMAP_HN **)
                    gm2(theEnv,(int) sizeof (BITMAP_HN *) * BITMAP_HASH_SIZE);
 
+   SymbolData(theEnv)->ExternalAddressTable = (EXTERNAL_ADDRESS_HN **)
+                   gm2(theEnv,(int) sizeof (EXTERNAL_ADDRESS_HN *) * EXTERNAL_ADDRESS_HASH_SIZE);
+
    /*===================================================*/
    /* Initialize all of the hash table entries to NULL. */
    /*===================================================*/
@@ -106,21 +156,32 @@ globle void InitializeAtomTables(
    for (i = 0; i < FLOAT_HASH_SIZE; i++) SymbolData(theEnv)->FloatTable[i] = NULL;
    for (i = 0; i < INTEGER_HASH_SIZE; i++) SymbolData(theEnv)->IntegerTable[i] = NULL;
    for (i = 0; i < BITMAP_HASH_SIZE; i++) SymbolData(theEnv)->BitMapTable[i] = NULL;
+   for (i = 0; i < EXTERNAL_ADDRESS_HASH_SIZE; i++) SymbolData(theEnv)->ExternalAddressTable[i] = NULL;
 
    /*========================*/
    /* Predefine some values. */
    /*========================*/
 
-   SymbolData(theEnv)->TrueSymbol = EnvAddSymbol(theEnv,TRUE_STRING);
-   IncrementSymbolCount(SymbolData(theEnv)->TrueSymbol);
-   SymbolData(theEnv)->FalseSymbol = EnvAddSymbol(theEnv,FALSE_STRING);
-   IncrementSymbolCount(SymbolData(theEnv)->FalseSymbol);
+   SymbolData(theEnv)->TrueSymbolHN = EnvAddSymbol(theEnv,TRUE_STRING);
+   IncrementSymbolCount(SymbolData(theEnv)->TrueSymbolHN);
+   SymbolData(theEnv)->FalseSymbolHN = EnvAddSymbol(theEnv,FALSE_STRING);
+   IncrementSymbolCount(SymbolData(theEnv)->FalseSymbolHN);
    SymbolData(theEnv)->PositiveInfinity = EnvAddSymbol(theEnv,POSITIVE_INFINITY_STRING);
    IncrementSymbolCount(SymbolData(theEnv)->PositiveInfinity);
    SymbolData(theEnv)->NegativeInfinity = EnvAddSymbol(theEnv,NEGATIVE_INFINITY_STRING);
    IncrementSymbolCount(SymbolData(theEnv)->NegativeInfinity);
-   SymbolData(theEnv)->Zero = EnvAddLong(theEnv,0L);
+   SymbolData(theEnv)->Zero = EnvAddLong(theEnv,0LL);
    IncrementIntegerCount(SymbolData(theEnv)->Zero);
+#else
+   SetSymbolTable(theEnv,symbolTable);
+   SetFloatTable(theEnv,floatTable);
+   SetIntegerTable(theEnv,integerTable);
+   SetBitMapTable(theEnv,bitmapTable);
+   
+   SymbolData(theEnv)->ExternalAddressTable = (EXTERNAL_ADDRESS_HN **)
+                gm2(theEnv,(int) sizeof (EXTERNAL_ADDRESS_HN *) * EXTERNAL_ADDRESS_HASH_SIZE);
+
+   for (i = 0; i < EXTERNAL_ADDRESS_HASH_SIZE; i++) SymbolData(theEnv)->ExternalAddressTable[i] = NULL;
 #endif
   }
 
@@ -136,12 +197,13 @@ static void DeallocateSymbolData(
    INTEGER_HN *ihPtr, *nextIHPtr;
    FLOAT_HN *fhPtr, *nextFHPtr;
    BITMAP_HN *bmhPtr, *nextBMHPtr;
-   struct ephemeron *edPtr, *nextEDPtr;
+   EXTERNAL_ADDRESS_HN *eahPtr, *nextEAHPtr;
 
    if ((SymbolData(theEnv)->SymbolTable == NULL) ||
        (SymbolData(theEnv)->FloatTable == NULL) ||
        (SymbolData(theEnv)->IntegerTable == NULL) ||
-       (SymbolData(theEnv)->BitMapTable == NULL))
+       (SymbolData(theEnv)->BitMapTable == NULL) ||
+       (SymbolData(theEnv)->ExternalAddressTable == NULL))
      { return; }
      
    for (i = 0; i < SYMBOL_HASH_SIZE; i++) 
@@ -153,7 +215,7 @@ static void DeallocateSymbolData(
          nextSHPtr = shPtr->next;
          if (! shPtr->permanent)
            {
-            rm(theEnv,shPtr->contents,strlen(shPtr->contents)+1);
+            rm(theEnv,(void *) shPtr->contents,strlen(shPtr->contents)+1);
             rtn_struct(theEnv,symbolHashNode,shPtr);
            }  
          shPtr = nextSHPtr;
@@ -195,51 +257,26 @@ static void DeallocateSymbolData(
          nextBMHPtr = bmhPtr->next;
          if (! bmhPtr->permanent)
            {
-            rm(theEnv,bmhPtr->contents,bmhPtr->size);
+            rm(theEnv,(void *) bmhPtr->contents,bmhPtr->size);
             rtn_struct(theEnv,bitMapHashNode,bmhPtr); 
            } 
          bmhPtr = nextBMHPtr;
         }
      }
 
-   /*=========================================*/
-   /* Remove the ephemeral symbol structures. */
-   /*=========================================*/
-   
-   edPtr = SymbolData(theEnv)->EphemeralSymbolList;
-
-   while (edPtr != NULL)
+   for (i = 0; i < EXTERNAL_ADDRESS_HASH_SIZE; i++) 
      {
-      nextEDPtr = edPtr->next;
-      rtn_struct(theEnv,ephemeron,edPtr);
-      edPtr = nextEDPtr;
-     }
+      eahPtr = SymbolData(theEnv)->ExternalAddressTable[i];
 
-   edPtr = SymbolData(theEnv)->EphemeralFloatList;
-
-   while (edPtr != NULL)
-     {
-      nextEDPtr = edPtr->next;
-      rtn_struct(theEnv,ephemeron,edPtr);
-      edPtr = nextEDPtr;
-     }
-
-   edPtr = SymbolData(theEnv)->EphemeralIntegerList;
-
-   while (edPtr != NULL)
-     {
-      nextEDPtr = edPtr->next;
-      rtn_struct(theEnv,ephemeron,edPtr);
-      edPtr = nextEDPtr;
-     }
-
-   edPtr = SymbolData(theEnv)->EphemeralBitMapList;
-
-   while (edPtr != NULL)
-     {
-      nextEDPtr = edPtr->next;
-      rtn_struct(theEnv,ephemeron,edPtr);
-      edPtr = nextEDPtr;
+      while (eahPtr != NULL)
+        {
+         nextEAHPtr = eahPtr->next;
+         if (! eahPtr->permanent)
+           {
+            rtn_struct(theEnv,externalAddressHashNode,eahPtr); 
+           } 
+         eahPtr = nextEAHPtr;
+        }
      }
 
    /*================================*/
@@ -256,6 +293,8 @@ static void DeallocateSymbolData(
    genfree(theEnv,SymbolData(theEnv)->BitMapTable,(int) sizeof (BITMAP_HN *) * BITMAP_HASH_SIZE);
 #endif
    
+   genfree(theEnv,SymbolData(theEnv)->ExternalAddressTable,(int) sizeof (EXTERNAL_ADDRESS_HN *) * EXTERNAL_ADDRESS_HASH_SIZE);
+
    /*==============================*/
    /* Remove binary symbol tables. */
    /*==============================*/
@@ -281,11 +320,12 @@ static void DeallocateSymbolData(
 /*********************************************************************/
 globle void *EnvAddSymbol(
   void *theEnv,
-  char *str)
+  const char *str)
   {
    unsigned long tally;
    size_t length;
    SYMBOL_HN *past = NULL, *peek;
+   char *buffer;
 
     /*====================================*/
     /* Get the hash value for the string. */
@@ -325,20 +365,21 @@ globle void *EnvAddSymbol(
     else past->next = peek;
 
     length = strlen(str) + 1;
-    peek->contents = (char *) gm2(theEnv,length);
+    buffer = (char *) gm2(theEnv,length);
+    genstrcpy(buffer,str);
+    peek->contents = buffer;
     peek->next = NULL;
     peek->bucket = tally;
     peek->count = 0;
     peek->permanent = FALSE;
-    strcpy(peek->contents,str);
       
     /*================================================*/
     /* Add the string to the list of ephemeral items. */
     /*================================================*/
 
-    AddEphemeralHashNode(theEnv,(GENERIC_HN *) peek,&SymbolData(theEnv)->EphemeralSymbolList,
-                         sizeof(SYMBOL_HN),AVERAGE_STRING_SIZE);
-    peek->depth = EvaluationData(theEnv)->CurrentEvaluationDepth;
+    AddEphemeralHashNode(theEnv,(GENERIC_HN *) peek,&UtilityData(theEnv)->CurrentGarbageFrame->ephemeralSymbolList,
+                         sizeof(SYMBOL_HN),AVERAGE_STRING_SIZE,TRUE);
+    UtilityData(theEnv)->CurrentGarbageFrame->dirty = TRUE;
 
     /*===================================*/
     /* Return the address of the symbol. */
@@ -353,7 +394,7 @@ globle void *EnvAddSymbol(
 /*****************************************************************/
 globle SYMBOL_HN *FindSymbolHN(
   void *theEnv,
-  char *str)
+  const char *str)
   {
    unsigned long tally;
    SYMBOL_HN *peek;
@@ -381,7 +422,7 @@ globle void *EnvAddDouble(
   void *theEnv,
   double number)
   {
-   unsigned tally;
+   unsigned long tally;
    FLOAT_HN *past = NULL, *peek;
 
     /*====================================*/
@@ -425,10 +466,10 @@ globle void *EnvAddDouble(
     /* Add the float to the list of ephemeral items. */
     /*===============================================*/
 
-    AddEphemeralHashNode(theEnv,(GENERIC_HN *) peek,&SymbolData(theEnv)->EphemeralFloatList,
-                         sizeof(FLOAT_HN),0);
-    peek->depth = EvaluationData(theEnv)->CurrentEvaluationDepth;
-
+    AddEphemeralHashNode(theEnv,(GENERIC_HN *) peek,&UtilityData(theEnv)->CurrentGarbageFrame->ephemeralFloatList,
+                         sizeof(FLOAT_HN),0,TRUE);
+    UtilityData(theEnv)->CurrentGarbageFrame->dirty = TRUE;
+    
     /*==================================*/
     /* Return the address of the float. */
     /*==================================*/
@@ -436,17 +477,17 @@ globle void *EnvAddDouble(
     return((void *) peek);
    }
 
-/****************************************************************/
-/* EnvAddLong: Searches for the long in the hash table. If the  */
-/*   long is already in the hash table, then the address of the */
-/*   long is returned. Otherwise, the long is hashed into the   */
-/*   table and the address of the long is also returned.        */
-/****************************************************************/
+/***************************************************************/
+/* EnvAddLong: Searches for the long in the hash table. If the */
+/*   long is already in the hash table, then the address of    */
+/*   the long is returned. Otherwise, the long is hashed into  */
+/*   the table and the address of the long is also returned.   */
+/***************************************************************/
 globle void *EnvAddLong(
   void *theEnv,
-  long int number)
+  long long number)
   {
-   unsigned tally;
+   unsigned long tally;
    INTEGER_HN *past = NULL, *peek;
 
     /*==================================*/
@@ -489,9 +530,9 @@ globle void *EnvAddLong(
     /* Add the integer to the list of ephemeral items. */
     /*=================================================*/
 
-    AddEphemeralHashNode(theEnv,(GENERIC_HN *) peek,&SymbolData(theEnv)->EphemeralIntegerList,
-                         sizeof(INTEGER_HN),0);
-    peek->depth = EvaluationData(theEnv)->CurrentEvaluationDepth;
+    AddEphemeralHashNode(theEnv,(GENERIC_HN *) peek,&UtilityData(theEnv)->CurrentGarbageFrame->ephemeralIntegerList,
+                         sizeof(INTEGER_HN),0,TRUE);
+    UtilityData(theEnv)->CurrentGarbageFrame->dirty = TRUE;
 
     /*====================================*/
     /* Return the address of the integer. */
@@ -506,36 +547,37 @@ globle void *EnvAddLong(
 /*****************************************************************/
 globle INTEGER_HN *FindLongHN(
   void *theEnv,
-  long int theLong)
+  long long theLong)
   {
-   unsigned tally;
+   unsigned long tally;
    INTEGER_HN *peek;
 
-    tally = HashInteger(theLong,INTEGER_HASH_SIZE);
+   tally = HashInteger(theLong,INTEGER_HASH_SIZE);
 
-    for (peek = SymbolData(theEnv)->IntegerTable[tally];
-         peek != NULL;
-         peek = peek->next)
-      { if (peek->contents == theLong) return(peek); }
+   for (peek = SymbolData(theEnv)->IntegerTable[tally];
+        peek != NULL;
+        peek = peek->next)
+     { if (peek->contents == theLong) return(peek); }
 
-    return(NULL);
-   }
+   return(NULL);
+  }
 
-/******************************************************************/
-/* AddBitMap: Searches for the bitmap in the hash table. If the   */
-/*   bitmap is already in the hash table, then the address of the */
-/*   bitmap is returned. Otherwise, the bitmap is hashed into the */
-/*   table and the address of the bitmap is also returned.        */
-/******************************************************************/
-globle void *AddBitMap(
+/*******************************************************************/
+/* EnvAddBitMap: Searches for the bitmap in the hash table. If the */
+/*   bitmap is already in the hash table, then the address of the  */
+/*   bitmap is returned. Otherwise, the bitmap is hashed into the  */
+/*   table and the address of the bitmap is also returned.         */
+/*******************************************************************/
+globle void *EnvAddBitMap(
   void *theEnv,
   void *vTheBitMap,
   unsigned size)
   {
    char *theBitMap = (char *) vTheBitMap;
-   unsigned tally;
+   unsigned long tally;
    unsigned i;
    BITMAP_HN *past = NULL, *peek;
+   char *buffer;
 
     /*====================================*/
     /* Get the hash value for the bitmap. */
@@ -558,7 +600,7 @@ globle void *AddBitMap(
 
     while (peek != NULL)
       {
-       if (peek->size == size)
+	   if (peek->size == (unsigned short) size)
          {
           for (i = 0; i < size ; i++)
             { if (peek->contents[i] != theBitMap[i]) break; }
@@ -579,22 +621,22 @@ globle void *AddBitMap(
     if (past == NULL) SymbolData(theEnv)->BitMapTable[tally] = peek;
     else past->next = peek;
 
-    peek->contents = (char *) gm2(theEnv,size);
+    buffer = (char *) gm2(theEnv,size);
+    for (i = 0; i < size ; i++) buffer[i] = theBitMap[i];
+    peek->contents = buffer;
     peek->next = NULL;
     peek->bucket = tally;
     peek->count = 0;
     peek->permanent = FALSE;
     peek->size = (unsigned short) size;
 
-    for (i = 0; i < size ; i++) peek->contents[i] = theBitMap[i];
-
     /*================================================*/
     /* Add the bitmap to the list of ephemeral items. */
     /*================================================*/
 
-    AddEphemeralHashNode(theEnv,(GENERIC_HN *) peek,&SymbolData(theEnv)->EphemeralBitMapList,
-                         sizeof(BITMAP_HN),sizeof(long));
-    peek->depth = EvaluationData(theEnv)->CurrentEvaluationDepth;
+    AddEphemeralHashNode(theEnv,(GENERIC_HN *) peek,&UtilityData(theEnv)->CurrentGarbageFrame->ephemeralBitMapList,
+                         sizeof(BITMAP_HN),sizeof(long),TRUE);
+    UtilityData(theEnv)->CurrentGarbageFrame->dirty = TRUE;
 
     /*===================================*/
     /* Return the address of the bitmap. */
@@ -603,11 +645,81 @@ globle void *AddBitMap(
     return((void *) peek);
    }
 
+/*******************************************************************/
+/* EnvAddExternalAddress: Searches for the external address in the */
+/*   hash table. If the external address is already in the hash    */
+/*   table, then the address of the external address is returned.  */
+/*   Otherwise, the external address is hashed into the table and  */
+/*   the address of the external address is also returned.         */
+/*******************************************************************/
+globle void *EnvAddExternalAddress(
+  void *theEnv,
+  void *theExternalAddress,
+  unsigned theType)
+  {
+   unsigned long tally;
+   EXTERNAL_ADDRESS_HN *past = NULL, *peek;
+
+    /*====================================*/
+    /* Get the hash value for the bitmap. */
+    /*====================================*/
+
+    tally = HashExternalAddress(theExternalAddress,EXTERNAL_ADDRESS_HASH_SIZE);
+
+    peek = SymbolData(theEnv)->ExternalAddressTable[tally];
+
+    /*=============================================================*/
+    /* Search for the external address in the list of entries for  */
+    /* this hash table location.  If the external addressis found, */
+    /* then return the address of the external address.            */
+    /*=============================================================*/
+
+    while (peek != NULL)
+      {
+       if ((peek->type == (unsigned short) theType) &&
+           (peek->externalAddress == theExternalAddress))
+         { return((void *) peek); }
+
+       past = peek;
+       peek = peek->next;
+      }
+
+    /*=================================================*/
+    /* Add the external address at the end of the list */
+    /* of entries for this hash table location.        */
+    /*=================================================*/
+
+    peek = get_struct(theEnv,externalAddressHashNode);
+    if (past == NULL) SymbolData(theEnv)->ExternalAddressTable[tally] = peek;
+    else past->next = peek;
+
+    peek->externalAddress = theExternalAddress;
+    peek->type = (unsigned short) theType;
+    peek->next = NULL;
+    peek->bucket = tally;
+    peek->count = 0;
+    peek->permanent = FALSE;
+
+    /*================================================*/
+    /* Add the bitmap to the list of ephemeral items. */
+    /*================================================*/
+
+    AddEphemeralHashNode(theEnv,(GENERIC_HN *) peek,&UtilityData(theEnv)->CurrentGarbageFrame->ephemeralExternalAddressList,
+                         sizeof(EXTERNAL_ADDRESS_HN),sizeof(long),TRUE);
+    UtilityData(theEnv)->CurrentGarbageFrame->dirty = TRUE;
+
+    /*=============================================*/
+    /* Return the address of the external address. */
+    /*=============================================*/
+
+    return((void *) peek);
+   }
+
 /***************************************************/
 /* HashSymbol: Computes a hash value for a symbol. */
 /***************************************************/
 globle unsigned long HashSymbol(
-  char *word,
+  const char *word,
   unsigned long range)
   {
    register int i;
@@ -616,52 +728,92 @@ globle unsigned long HashSymbol(
    for (i = 0; word[i]; i++)
      { tally = tally * 127 + word[i]; }
 
+   if (range == 0)
+     { return tally; }
+     
    return(tally % range);
   }
 
 /*************************************************/
 /* HashFloat: Computes a hash value for a float. */
 /*************************************************/
-globle unsigned HashFloat(
+globle unsigned long HashFloat(
   double number,
-  unsigned range)
+  unsigned long range)
   {
    unsigned long tally = 0;
    char *word;
-   int i;
+   unsigned i;
    
    word = (char *) &number;
    
    for (i = 0; i < sizeof(double); i++)
      { tally = tally * 127 + word[i]; }
      
+   if (range == 0)
+     { return tally; }
+       
    return(tally % range);
   }
 
 /******************************************************/
 /* HashInteger: Computes a hash value for an integer. */
 /******************************************************/
-globle unsigned HashInteger(
-  long int number,
-  unsigned range)
+globle unsigned long HashInteger(
+  long long number,
+  unsigned long range)
   {
-   unsigned tally;
+   unsigned long tally;
 
-   tally = (number % range);
+#if WIN_MVC
+   if (number < 0)
+     { number = - number; }
+   tally = (((unsigned) number) % range);
+#else
+   tally = (((unsigned) llabs(number)) % range);
+#endif
 
+   if (range == 0)
+     { return tally; }
+     
    return(tally);
+  }
+
+/****************************************/
+/* HashExternalAddress: Computes a hash */
+/*   value for an external address.     */
+/****************************************/
+globle unsigned long HashExternalAddress(
+  void *theExternalAddress,
+  unsigned long range)
+  {
+   unsigned long tally;
+   union
+     {
+      void *vv;
+      unsigned uv;
+     } fis;
+ 
+   fis.uv = 0;
+   fis.vv = theExternalAddress;
+   tally = (fis.uv / 256);
+   
+   if (range == 0)
+     { return tally; }
+     
+   return(tally % range);
   }
 
 /***************************************************/
 /* HashBitMap: Computes a hash value for a bitmap. */
 /***************************************************/
-globle unsigned HashBitMap(
-  char *word,
-  unsigned range,
+globle unsigned long HashBitMap(
+  const char *word,
+  unsigned long range,
   unsigned length)
   {
    register unsigned k,j,i;
-   unsigned tally;
+   unsigned long tally;
    unsigned longLength;
    unsigned long count = 0L,tmpLong;
    char *tmpPtr;
@@ -690,6 +842,9 @@ globle unsigned HashBitMap(
    /* Return the hash value. */
    /*========================*/
 
+   if (range == 0)
+     { return count; }
+     
    tally = (count % range);
 
    return(tally);
@@ -722,8 +877,9 @@ globle void DecrementSymbolCount(
 
    if (theValue->markedEphemeral == FALSE)
      {
-      AddEphemeralHashNode(theEnv,(GENERIC_HN *) theValue,&SymbolData(theEnv)->EphemeralSymbolList,
-                           sizeof(SYMBOL_HN),AVERAGE_STRING_SIZE);
+      AddEphemeralHashNode(theEnv,(GENERIC_HN *) theValue,&UtilityData(theEnv)->CurrentGarbageFrame->ephemeralSymbolList,
+                           sizeof(SYMBOL_HN),AVERAGE_STRING_SIZE,TRUE);
+      UtilityData(theEnv)->CurrentGarbageFrame->dirty = TRUE;
      }
 
    return;
@@ -750,8 +906,9 @@ globle void DecrementFloatCount(
 
    if (theValue->markedEphemeral == FALSE)
      {
-      AddEphemeralHashNode(theEnv,(GENERIC_HN *) theValue,&SymbolData(theEnv)->EphemeralFloatList,
-                           sizeof(FLOAT_HN),0);
+      AddEphemeralHashNode(theEnv,(GENERIC_HN *) theValue,&UtilityData(theEnv)->CurrentGarbageFrame->ephemeralFloatList,
+                           sizeof(FLOAT_HN),0,TRUE);
+      UtilityData(theEnv)->CurrentGarbageFrame->dirty = TRUE;
      }
 
    return;
@@ -778,8 +935,9 @@ globle void DecrementIntegerCount(
 
    if (theValue->markedEphemeral == FALSE)
      {
-      AddEphemeralHashNode(theEnv,(GENERIC_HN *) theValue,&SymbolData(theEnv)->EphemeralIntegerList,
-                           sizeof(INTEGER_HN),0);
+      AddEphemeralHashNode(theEnv,(GENERIC_HN *) theValue,&UtilityData(theEnv)->CurrentGarbageFrame->ephemeralIntegerList,
+                           sizeof(INTEGER_HN),0,TRUE);
+      UtilityData(theEnv)->CurrentGarbageFrame->dirty = TRUE;
      }
 
    return;
@@ -812,17 +970,54 @@ globle void DecrementBitMapCount(
 
    if (theValue->markedEphemeral == FALSE)
      {
-      AddEphemeralHashNode(theEnv,(GENERIC_HN *) theValue,&SymbolData(theEnv)->EphemeralBitMapList,
-                           sizeof(BITMAP_HN),sizeof(long));
+      AddEphemeralHashNode(theEnv,(GENERIC_HN *) theValue,&UtilityData(theEnv)->CurrentGarbageFrame->ephemeralBitMapList,
+                           sizeof(BITMAP_HN),sizeof(long),TRUE);
+      UtilityData(theEnv)->CurrentGarbageFrame->dirty = TRUE;
      }
 
    return;
   }
 
 /*************************************************************/
-/* RemoveHashNode: Removes a hash node from the SymbolTable, */
-/*   FloatTable, IntegerTable, or BitMapTable.               */
+/* DecrementExternalAddressCount: Decrements the count value */
+/*   for an ExternAddressTable entry. Adds the bitmap to the */
+/*   EphemeralExternalAddressList if the count becomes zero. */
 /*************************************************************/
+globle void DecrementExternalAddressCount(
+  void *theEnv,
+  EXTERNAL_ADDRESS_HN *theValue)
+  {
+   if (theValue->count < 0)
+     {
+      SystemError(theEnv,"SYMBOL",9);
+      EnvExitRouter(theEnv,EXIT_FAILURE);
+     }
+
+   if (theValue->count == 0)
+     {
+      SystemError(theEnv,"SYMBOL",10);
+      EnvExitRouter(theEnv,EXIT_FAILURE);
+     }
+
+   theValue->count--;
+
+   if (theValue->count != 0) return;
+
+   if (theValue->markedEphemeral == FALSE)
+     {
+      AddEphemeralHashNode(theEnv,(GENERIC_HN *) theValue,&UtilityData(theEnv)->CurrentGarbageFrame->ephemeralExternalAddressList,
+                           sizeof(EXTERNAL_ADDRESS_HN),sizeof(long),TRUE);
+      UtilityData(theEnv)->CurrentGarbageFrame->dirty = TRUE;
+     }
+
+   return;
+  }
+  
+/************************************************/
+/* RemoveHashNode: Removes a hash node from the */
+/*   SymbolTable, FloatTable, IntegerTable,     */
+/*   BitMapTable, or ExternalAddressTable.      */
+/************************************************/
 static void RemoveHashNode(
   void *theEnv,
   GENERIC_HN *theValue,
@@ -831,6 +1026,7 @@ static void RemoveHashNode(
   int type)
   {
    GENERIC_HN *previousNode, *currentNode;
+   struct externalAddressHashNode *theAddress;
 
    /*=============================================*/
    /* Find the entry in the specified hash table. */
@@ -846,7 +1042,7 @@ static void RemoveHashNode(
 
       if (currentNode == NULL)
         {
-         SystemError(theEnv,"SYMBOL",9);
+         SystemError(theEnv,"SYMBOL",11);
          EnvExitRouter(theEnv,EXIT_FAILURE);
         }
      }
@@ -868,13 +1064,21 @@ static void RemoveHashNode(
 
    if (type == SYMBOL)
      {
-      rm(theEnv,((SYMBOL_HN *) theValue)->contents,
+      rm(theEnv,(void *) ((SYMBOL_HN *) theValue)->contents,
          strlen(((SYMBOL_HN *) theValue)->contents) + 1);
      }
    else if (type == BITMAPARRAY)
      {
-      rm(theEnv,((BITMAP_HN *) theValue)->contents,
+      rm(theEnv,(void *) ((BITMAP_HN *) theValue)->contents,
          ((BITMAP_HN *) theValue)->size);
+     }
+   else if (type == EXTERNAL_ADDRESS)
+     {       
+      theAddress = (struct externalAddressHashNode *) theValue;
+
+      if ((EvaluationData(theEnv)->ExternalAddressTypes[theAddress->type] != NULL) &&
+          (EvaluationData(theEnv)->ExternalAddressTypes[theAddress->type]->discardFunction != NULL))
+        { (*EvaluationData(theEnv)->ExternalAddressTypes[theAddress->type]->discardFunction)(theEnv,theAddress->externalAddress); }
      }
 
    /*===========================*/
@@ -896,7 +1100,8 @@ static void AddEphemeralHashNode(
   GENERIC_HN *theHashNode,
   struct ephemeron **theEphemeralList,
   int hashNodeSize,
-  int averageContentsSize)
+  int averageContentsSize,
+  int checkCount)
   {
    struct ephemeron *temp;
 
@@ -905,9 +1110,9 @@ static void AddEphemeralHashNode(
    /* should never have been called.            */
    /*===========================================*/
 
-   if (theHashNode->count != 0)
+   if (checkCount && (theHashNode->count != 0))
      {
-      SystemError(theEnv,"SYMBOL",10);
+      SystemError(theEnv,"SYMBOL",12);
       EnvExitRouter(theEnv,EXIT_FAILURE);
      }
 
@@ -926,16 +1131,6 @@ static void AddEphemeralHashNode(
    temp->associatedValue = theHashNode;
    temp->next = *theEphemeralList;
    *theEphemeralList = temp;
-
-   /*=========================================================*/
-   /* Increment the ephemeral count and size variables. These */
-   /* variables are used by the garbage collection routines   */
-   /* to determine when garbage collection should occur.      */
-   /*=========================================================*/
-
-   UtilityData(theEnv)->EphemeralItemCount++;
-   UtilityData(theEnv)->EphemeralItemSize += sizeof(struct ephemeron) + hashNodeSize +
-                        averageContentsSize;
   }
 
 /***************************************************/
@@ -947,15 +1142,106 @@ static void AddEphemeralHashNode(
 globle void RemoveEphemeralAtoms(
   void *theEnv)
   {
-   RemoveEphemeralHashNodes(theEnv,&SymbolData(theEnv)->EphemeralSymbolList,(GENERIC_HN **) SymbolData(theEnv)->SymbolTable,
+   struct garbageFrame *theGarbageFrame;
+   
+   theGarbageFrame = UtilityData(theEnv)->CurrentGarbageFrame;
+   if (! theGarbageFrame->dirty) return;
+   
+   RemoveEphemeralHashNodes(theEnv,&theGarbageFrame->ephemeralSymbolList,(GENERIC_HN **) SymbolData(theEnv)->SymbolTable,
                             sizeof(SYMBOL_HN),SYMBOL,AVERAGE_STRING_SIZE);
-   RemoveEphemeralHashNodes(theEnv,&SymbolData(theEnv)->EphemeralFloatList,(GENERIC_HN **) SymbolData(theEnv)->FloatTable,
+   RemoveEphemeralHashNodes(theEnv,&theGarbageFrame->ephemeralFloatList,(GENERIC_HN **) SymbolData(theEnv)->FloatTable,
                             sizeof(FLOAT_HN),FLOAT,0);
-   RemoveEphemeralHashNodes(theEnv,&SymbolData(theEnv)->EphemeralIntegerList,(GENERIC_HN **) SymbolData(theEnv)->IntegerTable,
+   RemoveEphemeralHashNodes(theEnv,&theGarbageFrame->ephemeralIntegerList,(GENERIC_HN **) SymbolData(theEnv)->IntegerTable,
                             sizeof(INTEGER_HN),INTEGER,0);
-   RemoveEphemeralHashNodes(theEnv,&SymbolData(theEnv)->EphemeralBitMapList,(GENERIC_HN **) SymbolData(theEnv)->BitMapTable,
+   RemoveEphemeralHashNodes(theEnv,&theGarbageFrame->ephemeralBitMapList,(GENERIC_HN **) SymbolData(theEnv)->BitMapTable,
                             sizeof(BITMAP_HN),BITMAPARRAY,AVERAGE_BITMAP_SIZE);
+   RemoveEphemeralHashNodes(theEnv,&theGarbageFrame->ephemeralExternalAddressList,(GENERIC_HN **) SymbolData(theEnv)->ExternalAddressTable,
+                            sizeof(EXTERNAL_ADDRESS_HN),EXTERNAL_ADDRESS,0);
   }
+
+/**********************************************************/
+/* EphemerateMultifield: Marks the values of a multifield */
+/*   as ephemeral if they have not already been marker.   */
+/**********************************************************/
+globle void EphemerateMultifield(
+  void *theEnv,
+  struct multifield *theSegment)
+  {
+   unsigned long length, i;
+   struct field *theFields;
+
+   if (theSegment == NULL) return;
+
+   length = theSegment->multifieldLength;
+
+   theFields = theSegment->theFields;
+
+   for (i = 0 ; i < length ; i++)
+     { EphemerateValue(theEnv,theFields[i].type,theFields[i].value); }
+  }
+
+/***********************************************/
+/* EphemerateValue: Marks a value as ephemeral */
+/*   if it is not already marked.              */
+/***********************************************/
+globle void EphemerateValue(
+   void *theEnv,
+   int theType,
+   void *theValue)
+   {
+    SYMBOL_HN *theSymbol;
+    FLOAT_HN *theFloat;
+    INTEGER_HN *theInteger;
+    EXTERNAL_ADDRESS_HN *theExternalAddress;
+    
+    switch (theType)
+      {
+      case SYMBOL:
+      case STRING:
+#if OBJECT_SYSTEM
+      case INSTANCE_NAME:
+#endif
+        theSymbol = (SYMBOL_HN *) theValue;
+        if (theSymbol->markedEphemeral) return;
+        AddEphemeralHashNode(theEnv,(GENERIC_HN *) theValue,
+                             &UtilityData(theEnv)->CurrentGarbageFrame->ephemeralSymbolList,
+                             sizeof(SYMBOL_HN),AVERAGE_STRING_SIZE,FALSE);
+        UtilityData(theEnv)->CurrentGarbageFrame->dirty = TRUE;
+        break;
+
+      case FLOAT:
+        theFloat = (FLOAT_HN *) theValue;
+        if (theFloat->markedEphemeral) return;
+        AddEphemeralHashNode(theEnv,(GENERIC_HN *) theValue,
+                             &UtilityData(theEnv)->CurrentGarbageFrame->ephemeralFloatList,
+                             sizeof(FLOAT_HN),0,FALSE);
+        UtilityData(theEnv)->CurrentGarbageFrame->dirty = TRUE;
+        break;
+
+      case INTEGER:
+        theInteger = (INTEGER_HN *) theValue;
+        if (theInteger->markedEphemeral) return;
+        AddEphemeralHashNode(theEnv,(GENERIC_HN *) theValue,
+                             &UtilityData(theEnv)->CurrentGarbageFrame->ephemeralIntegerList,
+                             sizeof(INTEGER_HN),0,FALSE);
+        UtilityData(theEnv)->CurrentGarbageFrame->dirty = TRUE;
+        break;
+
+      case EXTERNAL_ADDRESS:
+        theExternalAddress = (EXTERNAL_ADDRESS_HN *) theValue;
+        if (theExternalAddress->markedEphemeral) return;
+        AddEphemeralHashNode(theEnv,(GENERIC_HN *) theValue,
+                             &UtilityData(theEnv)->CurrentGarbageFrame->ephemeralExternalAddressList,
+                             sizeof(EXTERNAL_ADDRESS_HN),sizeof(long),FALSE);
+        UtilityData(theEnv)->CurrentGarbageFrame->dirty = TRUE;
+        break;
+        
+      case MULTIFIELD:
+        EphemerateMultifield(theEnv,(struct multifield *) theValue);
+        break;
+
+      }
+   }
 
 /****************************************************************/
 /* RemoveEphemeralHashNodes: Removes symbols from the ephemeral */
@@ -996,16 +1282,12 @@ static void RemoveEphemeralHashNodes(
       /* evaluation depth.                                */
       /*==================================================*/
 
-      if ((edPtr->associatedValue->count == 0) &&
-          (edPtr->associatedValue->depth > EvaluationData(theEnv)->CurrentEvaluationDepth))
+      if (edPtr->associatedValue->count == 0)
         {
          RemoveHashNode(theEnv,edPtr->associatedValue,theTable,hashNodeSize,hashNodeType);
          rtn_struct(theEnv,ephemeron,edPtr);
          if (lastPtr == NULL) *theEphemeralList = nextPtr;
          else lastPtr->next = nextPtr;
-         UtilityData(theEnv)->EphemeralItemCount--;
-         UtilityData(theEnv)->EphemeralItemSize -= sizeof(struct ephemeron) + hashNodeSize +
-                              averageContentsSize;
         }
 
       /*=======================================*/
@@ -1021,9 +1303,6 @@ static void RemoveEphemeralHashNodes(
 
          if (lastPtr == NULL) *theEphemeralList = nextPtr;
          else lastPtr->next = nextPtr;
-         UtilityData(theEnv)->EphemeralItemCount--;
-         UtilityData(theEnv)->EphemeralItemSize -= sizeof(struct ephemeron) + hashNodeSize +
-                              averageContentsSize;
         }
 
       /*==================================================*/
@@ -1113,6 +1392,25 @@ globle void SetBitMapTable(
    SymbolData(theEnv)->BitMapTable = value;
   }
 
+/***************************************************************************/
+/* GetExternalAddressTable: Returns a pointer to the ExternalAddressTable. */
+/***************************************************************************/
+globle EXTERNAL_ADDRESS_HN **GetExternalAddressTable(
+  void *theEnv)
+  {
+   return(SymbolData(theEnv)->ExternalAddressTable);
+  }
+
+/************************************************************************/
+/* SetExternalAddressTable: Sets the value of the ExternalAddressTable. */
+/************************************************************************/
+globle void SetExternalAddressTable(
+  void *theEnv,
+  EXTERNAL_ADDRESS_HN **value)
+  {
+   SymbolData(theEnv)->ExternalAddressTable = value;
+  }
+
 /******************************************************/
 /* RefreshSpecialSymbols: Resets the values of the    */
 /*   TrueSymbol, FalseSymbol, Zero, PositiveInfinity, */
@@ -1121,8 +1419,8 @@ globle void SetBitMapTable(
 globle void RefreshSpecialSymbols(
   void *theEnv)
   {
-   SymbolData(theEnv)->TrueSymbol = (void *) FindSymbolHN(theEnv,TRUE_STRING);
-   SymbolData(theEnv)->FalseSymbol = (void *) FindSymbolHN(theEnv,FALSE_STRING);
+   SymbolData(theEnv)->TrueSymbolHN = (void *) FindSymbolHN(theEnv,TRUE_STRING);
+   SymbolData(theEnv)->FalseSymbolHN = (void *) FindSymbolHN(theEnv,FALSE_STRING);
    SymbolData(theEnv)->PositiveInfinity = (void *) FindSymbolHN(theEnv,POSITIVE_INFINITY_STRING);
    SymbolData(theEnv)->NegativeInfinity = (void *) FindSymbolHN(theEnv,NEGATIVE_INFINITY_STRING);
    SymbolData(theEnv)->Zero = (void *) FindLongHN(theEnv,0L);
@@ -1136,13 +1434,13 @@ globle void RefreshSpecialSymbols(
 /***********************************************************/
 globle struct symbolMatch *FindSymbolMatches(
   void *theEnv,
-  char *searchString,
+  const char *searchString,
   unsigned *numberOfMatches,
-  unsigned *commonPrefixLength)
+  size_t *commonPrefixLength)
   {
    struct symbolMatch *reply = NULL, *temp;
    struct symbolHashNode *hashPtr = NULL;
-   unsigned searchLength;
+   size_t searchLength;
 
    searchLength = strlen(searchString);
    *numberOfMatches = 0;
@@ -1198,16 +1496,16 @@ globle void ClearBitString(
 /*****************************************************************/
 globle SYMBOL_HN *GetNextSymbolMatch(
   void *theEnv,
-  char *searchString,
-  unsigned searchLength,
+  const char *searchString,
+  size_t searchLength,
   SYMBOL_HN *prevSymbol,
   int anywhere,
-  unsigned *commonPrefixLength)
+  size_t *commonPrefixLength)
   {
    register unsigned long i;
    SYMBOL_HN *hashPtr;
    int flag = TRUE;
-   unsigned prefixLength;
+   size_t prefixLength;
 
    /*==========================================*/
    /* If we're looking anywhere in the string, */
@@ -1331,9 +1629,9 @@ globle SYMBOL_HN *GetNextSymbolMatch(
 /* StringWithinString: Determines if a string */
 /*   is contained within another string.      */
 /**********************************************/
-static char *StringWithinString(
-  char *cs,
-  char *ct)
+static const char *StringWithinString(
+  const char *cs,
+  const char *ct)
   {
    register unsigned i,j,k;
 
@@ -1350,9 +1648,9 @@ static char *StringWithinString(
 /* CommonPrefixLength: Determines the length of */
 /*    the maximumcommon prefix of two strings   */
 /************************************************/
-static unsigned CommonPrefixLength(
-  char *cs,
-  char *ct)
+static size_t CommonPrefixLength(
+  const char *cs,
+  const char *ct)
   {
    register unsigned i;
 
@@ -1398,7 +1696,7 @@ globle void SetAtomicValueIndices(
            {
             symbolPtr->bucket = count++;
             if (symbolPtr->bucket != (count - 1))
-              { SystemError(theEnv,"SYMBOL",667); }
+              { SystemError(theEnv,"SYMBOL",13); }
            }
         }
      }
@@ -1420,7 +1718,7 @@ globle void SetAtomicValueIndices(
            {
             floatPtr->bucket = count++;
             if (floatPtr->bucket != (count - 1))
-              { SystemError(theEnv,"SYMBOL",668); }
+              { SystemError(theEnv,"SYMBOL",14); }
            }
         }
      }
@@ -1442,7 +1740,7 @@ globle void SetAtomicValueIndices(
            {
             integerPtr->bucket = count++;
             if (integerPtr->bucket != (count - 1))
-              { SystemError(theEnv,"SYMBOL",669); }
+              { SystemError(theEnv,"SYMBOL",15); }
            }
         }
      }
@@ -1464,7 +1762,7 @@ globle void SetAtomicValueIndices(
            {
             bitMapPtr->bucket = count++;
             if (bitMapPtr->bucket != (count - 1))
-              { SystemError(theEnv,"SYMBOL",670); }
+              { SystemError(theEnv,"SYMBOL",16); }
            }
         }
      }
@@ -1542,3 +1840,56 @@ globle void RestoreAtomicValueBuckets(
   }
 
 #endif /* BLOAD_AND_BSAVE || CONSTRUCT_COMPILER || BSAVE_INSTANCES */
+
+/*##################################*/
+/* Additional Environment Functions */
+/*##################################*/
+
+globle void *EnvFalseSymbol(
+  void *theEnv)
+  {
+   return SymbolData(theEnv)->FalseSymbolHN;
+  }
+
+globle void *EnvTrueSymbol(
+  void *theEnv)
+  {
+   return SymbolData(theEnv)->TrueSymbolHN;
+  }
+
+/*#####################################*/
+/* ALLOW_ENVIRONMENT_GLOBALS Functions */
+/*#####################################*/
+
+#if ALLOW_ENVIRONMENT_GLOBALS
+
+globle void *AddSymbol(
+  const char *str)
+  {
+   return EnvAddSymbol(GetCurrentEnvironment(),str);
+  }
+
+globle void *AddLong(
+  long long number)
+  {
+   return EnvAddLong(GetCurrentEnvironment(),number);
+  }
+
+globle void *AddDouble(
+  double number)
+  {
+   return EnvAddDouble(GetCurrentEnvironment(),number);
+  }
+
+globle void *FalseSymbol()
+  {
+   return SymbolData(GetCurrentEnvironment())->FalseSymbolHN;
+  }
+
+globle void *TrueSymbol()
+  {
+   return SymbolData(GetCurrentEnvironment())->TrueSymbolHN;
+  }
+
+#endif /* ALLOW_ENVIRONMENT_GLOBALS */
+
