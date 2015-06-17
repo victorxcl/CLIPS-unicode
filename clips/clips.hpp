@@ -5,17 +5,16 @@
 //  Created by chunlei.xiong on 13-11-12.
 //  Copyright (c) 2013年 熊春雷. All rights reserved.
 //
-//  必须在支持C++11语法的编译器下面使用
+//  MUST be compiled by C++11 and later compiler.
 
 #pragma once
 
 extern "C"{
-// 下面的代码有可能采用C++的方式进行编译
+// the code will be compiled by C++
 #   include "clips.h"
 }
 
 #include <functional>
-#include <tuple>
 
 namespace clips {
     
@@ -88,7 +87,7 @@ namespace clips {
     template<class T>struct return_code<const T> {enum{value=return_code<T>::value};};// const [int|long|char|float|double]
     template<>struct return_code<const char*>  {enum{value='s'};};// s          	String
     
-    // 下面是还没有用到的返回值code
+	// Here are the unused return codes:
     //j          	Unknown Data Type (Symbol, String, or Instance Name Expected)
     //k          	Unknown Data Type (Symbol or String Expected)
     //m          	Multifield
