@@ -11,6 +11,7 @@
 	(multislot A)
 	(multislot B)
 	(slot 船(allowed-symbols A B))
+	(multislot history)
 )
 ;; 声明事实
 (deffacts 初始事实
@@ -41,6 +42,24 @@
 	(printout t "猎人和狼分开，狼会将它所在一边的所有人都吃掉" crlf)
 	(retract ?f)
 )
+;(defrule 猎人和狼分开，狼会将它所在一边的所有人都吃掉
+;	(declare (salience 200))
+;	(and ?f <- (状态 (parent ?parent)(A $?A 狼 $?B))
+;	           (test (> (length$ (create$ ?A ?B)) 0))
+;	           (not (状态 (parent ?parent)(A $? 猎人 $?))))
+;=>
+;	(printout t "猎人和狼分开，狼会将它所在一边的所有人都吃掉" crlf)
+;	(retract ?f)
+;)
+;(defrule 猎人和狼分开，狼会将它所在一边的所有人都吃掉
+;	(declare (salience 200))
+;	(and ?f <- (状态 (parent ?parent)(B $?A 狼 $?B))
+;	           (test (> (length$ (create$ ?A ?B)) 0))
+;	           (not (状态 (parent ?parent)(B $? 猎人 $?))))
+;=>
+;	(printout t "猎人和狼分开，狼会将它所在一边的所有人都吃掉" crlf)
+;	(retract ?f)
+;)
 (defrule 男人离开，女人就会把男人的两个小孩掐死
 	(declare (salience 200))
 	(or (and ?f <- (状态 (parent ?parent)(A $? 女人 $?))
@@ -68,43 +87,44 @@
 ;;船上一次最多只能坐两个人
 ;;只有猎人、男人、女人会划船（上船）
 (defrule 只有猎人、男人、女人会划船（划船从A到B上岸1人）
-	?f <- (状态 (船 A)(A $?A ?M $?B)(B $?C)(index ?i))
+	?f <- (状态 (船 A)(A $?A ?M $?B)(B $?C)(index ?i)(history $?history))
 	(会划船 ?M)
 =>
 	(printout t ?M "划船从A到B 船上成员：" (create$ ?M) crlf)
-	(assert (状态 (船 B)(A ?A ?B)(B ?C ?M)(parent ?f)(index (+ ?i 1))))
+	(assert (状态 (船 B)(A ?A ?B)(B ?C ?M)(parent ?f)(index (+ ?i 1))(history ?history ?f)))
 )
 (defrule 只有猎人、男人、女人会划船（划船从B到A上岸1人）
-	?f <- (状态 (船 B)(B $?A ?M $?B)(A $?C)(index ?i))
+	?f <- (状态 (船 B)(B $?A ?M $?B)(A $?C)(index ?i)(history $?history))
 	(test (> (length$ ?C) 0));; 必须保证A上还有人，否则目标就已经完成了
 	(会划船 ?M)
 =>
 	(printout t ?M "划船从B到A 船上成员：" (create$ ?M) crlf)
-	(assert (状态 (船 A)(B ?A ?B)(A ?C ?M)(parent ?f)(index (+ ?i 1))))
+	(assert (状态 (船 A)(B ?A ?B)(A ?C ?M)(parent ?f)(index (+ ?i 1))(history ?history ?f)))
 )
 
 (defrule 只有猎人、男人、女人会划船（划船从A到B上岸2人）
-	?f <- (状态 (船 A)(A $?A ?M $?B ?N $?C)(B $?D)(index ?i))
+	?f <- (状态 (船 A)(A $?A ?M $?B ?N $?C)(B $?D)(index ?i)(history $?history))
 	(or (会划船 ?M)(会划船 ?N))
 =>
 	(printout t "成员划船从A到B, 船上成员：" (create$ ?M ?N) crlf)
-	(assert (状态 (船 B)(A ?A ?B ?C)(B ?D ?M ?N)(parent ?f)(index (+ ?i 1))))
+	(assert (状态 (船 B)(A ?A ?B ?C)(B ?D ?M ?N)(parent ?f)(index (+ ?i 1))(history ?history ?f)))
 )
 (defrule 只有猎人、男人、女人会划船（划船从B到A上岸2人）
-	?f <- (状态 (船 B)(B $?A ?M $?B ?N $?C)(A $?D)(index ?i))
+	?f <- (状态 (船 B)(B $?A ?M $?B ?N $?C)(A $?D)(index ?i)(history $?history))
 	(test (> (length$ ?D) 0));; 必须保证A上还有人，否则目标就已经完成了
 	(or (会划船 ?M)(会划船 ?N))
 =>
 	(printout t "成员划船从B到A, 船上成员：" (create$ ?M ?N) crlf)
-	(assert (状态 (船 A)(B ?A ?B ?C)(A ?D ?M ?N)(parent ?f)(index (+ ?i 1))))
+	(assert (状态 (船 A)(B ?A ?B ?C)(A ?D ?M ?N)(parent ?f)(index (+ ?i 1))(history ?history ?f)))
 )
 
 (defrule 目标达成
 	(declare (salience 200))
-	(状态 (A))
+	?f <- (状态 (A)(history $?history))
 =>
 	(printout t "目标达成" crlf)
-	;(halt)
+	(progn$ (?v (create$ ?history ?f))(ppfact ?v))
+	(halt)
 )
 (defrule 避免出现循环
 	(declare (salience 200))
@@ -121,10 +141,12 @@
 (watch facts)
 ;(watch rules)
 ;(watch activations)
+;(set-break 猎人和狼分开，狼会将它所在一边的所有人都吃掉)
+;(set-break 只有猎人、男人、女人会划船（划船从A到B上岸2人）)
+;(set-fact-duplication TRUE)
 (reset)
 (run 10000)
-(dribble-off)
 ;(run 3000)
-;(facts)
-;(dribble-off)
+(facts)
+(dribble-off)
 (exit)
