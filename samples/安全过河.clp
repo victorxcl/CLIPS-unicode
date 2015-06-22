@@ -91,7 +91,8 @@
 	(会划船 ?M)
 =>
 	(printout t ?M "划船从A到B 船上成员：" (create$ ?M) crlf)
-	(assert (状态 (船 B)(A ?A ?B)(B ?C ?M)(parent ?f)(index (+ ?i 1))(history ?history ?f)))
+	(bind ?F (assert (状态 (船 B)(A ?A ?B)(B ?C ?M)(parent ?f)(index (+ ?i 1))(history ?history ?f))))
+	(ppfact ?f)(if (not ?F) then (ppfact ?f)(halt))
 )
 (defrule 只有猎人、男人、女人会划船（划船从B到A上岸1人）
 	?f <- (状态 (船 B)(B $?A ?M $?B)(A $?C)(index ?i)(history $?history))
@@ -99,7 +100,8 @@
 	(会划船 ?M)
 =>
 	(printout t ?M "划船从B到A 船上成员：" (create$ ?M) crlf)
-	(assert (状态 (船 A)(B ?A ?B)(A ?C ?M)(parent ?f)(index (+ ?i 1))(history ?history ?f)))
+	(bind ?F (assert (状态 (船 A)(B ?A ?B)(A ?C ?M)(parent ?f)(index (+ ?i 1))(history ?history ?f))))
+	(ppfact ?f)(if (not ?F) then (ppfact ?f)(halt))
 )
 
 (defrule 只有猎人、男人、女人会划船（划船从A到B上岸2人）
@@ -107,7 +109,8 @@
 	(or (会划船 ?M)(会划船 ?N))
 =>
 	(printout t "成员划船从A到B, 船上成员：" (create$ ?M ?N) crlf)
-	(assert (状态 (船 B)(A ?A ?B ?C)(B ?D ?M ?N)(parent ?f)(index (+ ?i 1))(history ?history ?f)))
+	(bind ?F (assert (状态 (船 B)(A ?A ?B ?C)(B ?D ?M ?N)(parent ?f)(index (+ ?i 1))(history ?history ?f))))
+	(ppfact ?f)(if (not ?F) then (ppfact ?f)(halt))
 )
 (defrule 只有猎人、男人、女人会划船（划船从B到A上岸2人）
 	?f <- (状态 (船 B)(B $?A ?M $?B ?N $?C)(A $?D)(index ?i)(history $?history))
@@ -115,7 +118,8 @@
 	(or (会划船 ?M)(会划船 ?N))
 =>
 	(printout t "成员划船从B到A, 船上成员：" (create$ ?M ?N) crlf)
-	(assert (状态 (船 A)(B ?A ?B ?C)(A ?D ?M ?N)(parent ?f)(index (+ ?i 1))(history ?history ?f)))
+	(bind ?F (assert (状态 (船 A)(B ?A ?B ?C)(A ?D ?M ?N)(parent ?f)(index (+ ?i 1))(history ?history ?f))))
+	(ppfact ?f)(if (not ?F) then (ppfact ?f)(halt))
 )
 
 (defrule 目标达成
@@ -148,5 +152,5 @@
 (run 10000)
 ;(run 3000)
 (facts)
-(dribble-off)
-(exit)
+;(dribble-off)
+;(exit)
