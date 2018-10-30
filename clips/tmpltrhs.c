@@ -1,7 +1,7 @@
    /*******************************************************/
    /*      "C" Language Integrated Production System      */
    /*                                                     */
-   /*             CLIPS Version 6.30  07/25/14            */
+   /*            CLIPS Version 6.40  08/25/16             */
    /*                                                     */
    /*          DEFTEMPLATE RHS PARSING HEADER FILE        */
    /*******************************************************/
@@ -26,28 +26,35 @@
 /*      6.30: Added const qualifiers to remove C++           */
 /*            deprecation warnings.                          */
 /*                                                           */
+/*      6.40: Pragma once and other inclusion changes.       */
+/*                                                           */
+/*            Added support for booleans with <stdbool.h>.   */
+/*                                                           */
+/*            Removed use of void pointers for specific      */
+/*            data structures.                               */
+/*                                                           */
+/*            UDF redesign.                                  */
+/*                                                           */
 /*************************************************************/
-
-#define _TMPLTRHS_SOURCE_
 
 #include "setup.h"
 
 #if DEFTEMPLATE_CONSTRUCT
 
 #include <stdio.h>
-#define _STDIO_INCLUDED_
 
+#include "default.h"
+#include "extnfunc.h"
+#include "factrhs.h"
 #include "memalloc.h"
+#include "modulutl.h"
+#include "pprint.h"
 #include "prntutil.h"
 #include "router.h"
-#include "tmpltfun.h"
 #include "tmpltdef.h"
-#include "factrhs.h"
-#include "extnfunc.h"
-#include "modulutl.h"
-#include "default.h"
-#include "tmpltutl.h"
+#include "tmpltfun.h"
 #include "tmpltlhs.h"
+#include "tmpltutl.h"
 
 #include "tmpltrhs.h"
 
@@ -55,24 +62,24 @@
 /* LOCAL INTERNAL FUNCTION DEFINITIONS */
 /***************************************/
 
-   static struct expr            *ParseAssertSlotValues(void *,const char *,struct token *,struct templateSlot *,int *,int);
-   static struct expr            *ReorderAssertSlotValues(void *,struct templateSlot *,struct expr *,int *);
-   static struct expr            *GetSlotAssertValues(void *,struct templateSlot *,struct expr *,int *);
+   static struct expr            *ParseAssertSlotValues(Environment *,const char *,struct token *,struct templateSlot *,bool *,bool);
+   static struct expr            *ReorderAssertSlotValues(Environment *,struct templateSlot *,struct expr *,bool *);
+   static struct expr            *GetSlotAssertValues(Environment *,struct templateSlot *,struct expr *,bool *);
    static struct expr            *FindAssertSlotItem(struct templateSlot *,struct expr *);
-   static struct templateSlot    *ParseSlotLabel(void *,const char *,struct token *,struct deftemplate *,int *,int);
+   static struct templateSlot    *ParseSlotLabel(Environment *,const char *,struct token *,Deftemplate *,bool *,TokenType);
 
 /******************************************************************/
 /* ParseAssertTemplate: Parses and builds the list of values that */
 /*   are used for an assert of a fact with a deftemplate.         */
 /******************************************************************/
-globle struct expr *ParseAssertTemplate(
-  void *theEnv,
+struct expr *ParseAssertTemplate(
+  Environment *theEnv,
   const char *readSource,
   struct token *theToken,
-  int *error,
-  int endType,
-  int constantsOnly,
-  struct deftemplate *theDeftemplate)
+  bool *error,
+  TokenType endType,
+  bool constantsOnly,
+  Deftemplate *theDeftemplate)
   {
    struct expr *firstSlot, *lastSlot, *nextSlot;
    struct expr *firstArg, *tempSlot;
@@ -97,10 +104,10 @@ globle struct expr *ParseAssertTemplate(
         {
          if (tempSlot->value == (void *) slotPtr->slotName)
            {
-            AlreadyParsedErrorMessage(theEnv,"slot ",ValueToString(slotPtr->slotName));
-            *error = TRUE;
+            AlreadyParsedErrorMessage(theEnv,"slot ",slotPtr->slotName->contents);
+            *error = true;
             ReturnExpression(theEnv,firstSlot);
-            return(NULL);
+            return NULL;
            }
         }
 
@@ -114,7 +121,7 @@ globle struct expr *ParseAssertTemplate(
       if (*error)
         {
          ReturnExpression(theEnv,firstSlot);
-         return(NULL);
+         return NULL;
         }
 
       /*============================================*/
@@ -124,10 +131,10 @@ globle struct expr *ParseAssertTemplate(
 
       if (CheckRHSSlotTypes(theEnv,nextSlot->argList,slotPtr,"assert") == 0)
         {
-         *error = TRUE;
+         *error = true;
          ReturnExpression(theEnv,firstSlot);
          ReturnExpression(theEnv,nextSlot);
-         return(NULL);
+         return NULL;
         }
 
       /*===================================================*/
@@ -149,7 +156,7 @@ globle struct expr *ParseAssertTemplate(
    if (*error)
      {
       ReturnExpression(theEnv,firstSlot);
-      return(NULL);
+      return NULL;
      }
 
    /*=============================================================*/
@@ -171,21 +178,20 @@ globle struct expr *ParseAssertTemplate(
 /*   Checks for opening left parenthesis and a valid slot name. */
 /****************************************************************/
 static struct templateSlot *ParseSlotLabel(
-  void *theEnv,
+  Environment *theEnv,
   const char *inputSource,
   struct token *tempToken,
-  struct deftemplate *theDeftemplate,
-  int *error,
-  int endType)
+  Deftemplate *theDeftemplate,
+  bool *error,
+  TokenType endType)
   {
    struct templateSlot *slotPtr;
-   short position;
 
    /*========================*/
    /* Initialize error flag. */
    /*========================*/
 
-   *error = FALSE;
+   *error = false;
 
    /*============================================*/
    /* If token is a right parenthesis, then fact */
@@ -193,8 +199,8 @@ static struct templateSlot *ParseSlotLabel(
    /*============================================*/
 
    GetToken(theEnv,inputSource,tempToken);
-   if (tempToken->type == endType)
-     { return(NULL); }
+   if (tempToken->tknType == endType)
+     { return NULL; }
 
    /*=======================================*/
    /* Put a space between the template name */
@@ -209,11 +215,11 @@ static struct templateSlot *ParseSlotLabel(
    /* Slot definition begins with opening left parenthesis. */
    /*=======================================================*/
 
-   if (tempToken->type != LPAREN)
+   if (tempToken->tknType != LEFT_PARENTHESIS_TOKEN)
      {
       SyntaxErrorMessage(theEnv,"deftemplate pattern");
-      *error = TRUE;
-      return(NULL);
+      *error = true;
+      return NULL;
      }
 
    /*=============================*/
@@ -221,52 +227,52 @@ static struct templateSlot *ParseSlotLabel(
    /*=============================*/
 
    GetToken(theEnv,inputSource,tempToken);
-   if (tempToken->type != SYMBOL)
+   if (tempToken->tknType != SYMBOL_TOKEN)
      {
       SyntaxErrorMessage(theEnv,"deftemplate pattern");
-      *error = TRUE;
-      return(NULL);
+      *error = true;
+      return NULL;
      }
 
    /*======================================================*/
    /* Check that the slot name is valid for this template. */
    /*======================================================*/
 
-   if ((slotPtr = FindSlot(theDeftemplate,(SYMBOL_HN *) tempToken->value,&position)) == NULL)
+   if ((slotPtr = FindSlot(theDeftemplate,tempToken->lexemeValue,NULL)) == NULL)
      {
-      InvalidDeftemplateSlotMessage(theEnv,ValueToString(tempToken->value),
-                                    ValueToString(theDeftemplate->header.name),TRUE);
-      *error = TRUE;
-      return(NULL);
+      InvalidDeftemplateSlotMessage(theEnv,tempToken->lexemeValue->contents,
+                                    theDeftemplate->header.name->contents,true);
+      *error = true;
+      return NULL;
      }
 
    /*====================================*/
    /* Return a pointer to the slot name. */
    /*====================================*/
 
-   return(slotPtr);
+   return slotPtr;
   }
 
 /**************************************************************************/
 /* ParseAssertSlotValues: Gets a single assert slot value for a template. */
 /**************************************************************************/
 static struct expr *ParseAssertSlotValues(
-  void *theEnv,
+  Environment *theEnv,
   const char *inputSource,
   struct token *tempToken,
   struct templateSlot *slotPtr,
-  int *error,
-  int constantsOnly)
+  bool *error,
+  bool constantsOnly)
   {
    struct expr *nextSlot;
    struct expr *newField, *valueList, *lastValue;
-   int printError;
+   bool printError;
 
    /*=============================*/
    /* Handle a single field slot. */
    /*=============================*/
 
-   if (slotPtr->multislot == FALSE)
+   if (slotPtr->multislot == false)
      {
       /*=====================*/
       /* Get the slot value. */
@@ -274,12 +280,12 @@ static struct expr *ParseAssertSlotValues(
 
       SavePPBuffer(theEnv," ");
 
-      newField = GetAssertArgument(theEnv,inputSource,tempToken,
-                                   error,RPAREN,constantsOnly,&printError);
+      newField = GetAssertArgument(theEnv,inputSource,tempToken,error,
+                                   RIGHT_PARENTHESIS_TOKEN,constantsOnly,&printError);
       if (*error)
         {
          if (printError) SyntaxErrorMessage(theEnv,"deftemplate pattern");
-         return(NULL);
+         return NULL;
         }
 
       /*=================================================*/
@@ -289,9 +295,9 @@ static struct expr *ParseAssertSlotValues(
 
       if (newField == NULL)
        {
-        *error = TRUE;
+        *error = true;
         SingleFieldSlotCardinalityError(theEnv,slotPtr->slotName->contents);
-        return(NULL);
+        return NULL;
        }
 
       /*==============================================*/
@@ -299,13 +305,22 @@ static struct expr *ParseAssertSlotValues(
       /* not be called to get the value for the slot. */
       /*==============================================*/
 
-      if ((newField->type == FCALL) ? (ExpressionFunctionType(newField) == 'm') :
-                                      (newField->type == MF_VARIABLE))
+      if (newField->type == MF_VARIABLE)
+        {
+         *error = true;
+         SingleFieldSlotCardinalityError(theEnv,slotPtr->slotName->contents);
+         ReturnExpression(theEnv,newField);
+         return NULL;
+        }
+      else if (newField->type == FCALL)
        {
-        *error = TRUE;
-        SingleFieldSlotCardinalityError(theEnv,slotPtr->slotName->contents);
-        ReturnExpression(theEnv,newField);
-        return(NULL);
+        if ((ExpressionUnknownFunctionType(newField) & SINGLEFIELD_BITS) == 0)
+          {
+           *error = true;
+           SingleFieldSlotCardinalityError(theEnv,slotPtr->slotName->contents);
+           ReturnExpression(theEnv,newField);
+           return NULL;
+          }
        }
 
       /*============================*/
@@ -323,12 +338,12 @@ static struct expr *ParseAssertSlotValues(
    else
      {
       SavePPBuffer(theEnv," ");
-      valueList = GetAssertArgument(theEnv,inputSource,tempToken,
-                                     error,RPAREN,constantsOnly,&printError);
+      valueList = GetAssertArgument(theEnv,inputSource,tempToken,error,
+                                    RIGHT_PARENTHESIS_TOKEN,constantsOnly,&printError);
       if (*error)
         {
          if (printError) SyntaxErrorMessage(theEnv,"deftemplate pattern");
-         return(NULL);
+         return NULL;
         }
 
       if (valueList == NULL)
@@ -340,9 +355,9 @@ static struct expr *ParseAssertSlotValues(
 
       lastValue = valueList;
 
-      while (lastValue != NULL) /* (tempToken->type != RPAREN) */
+      while (lastValue != NULL) /* (tempToken->tknType != RIGHT_PARENTHESIS_TOKEN) */
         {
-         if (tempToken->type == RPAREN)
+         if (tempToken->tknType == RIGHT_PARENTHESIS_TOKEN)
            { SavePPBuffer(theEnv," "); }
          else
            {
@@ -351,12 +366,13 @@ static struct expr *ParseAssertSlotValues(
             /* SavePPBuffer(theEnv,tempToken->printForm); */
            }
 
-         newField = GetAssertArgument(theEnv,inputSource,tempToken,error,RPAREN,constantsOnly,&printError);
+         newField = GetAssertArgument(theEnv,inputSource,tempToken,error,
+                                      RIGHT_PARENTHESIS_TOKEN,constantsOnly,&printError);
          if (*error)
            {
             if (printError) SyntaxErrorMessage(theEnv,"deftemplate pattern");
             ReturnExpression(theEnv,valueList);
-            return(NULL);
+            return NULL;
            }
 
          if (newField == NULL)
@@ -377,19 +393,19 @@ static struct expr *ParseAssertSlotValues(
    /* Slot definition must be closed with a right parenthesis. */
    /*==========================================================*/
 
-   if (tempToken->type != RPAREN)
+   if (tempToken->tknType != RIGHT_PARENTHESIS_TOKEN)
      {
       SingleFieldSlotCardinalityError(theEnv,slotPtr->slotName->contents);
-      *error = TRUE;
+      *error = true;
       ReturnExpression(theEnv,newField);
-      return(NULL);
+      return NULL;
      }
 
    /*=========================================================*/
    /* Build and return a structure describing the slot value. */
    /*=========================================================*/
 
-   nextSlot = GenConstant(theEnv,SYMBOL,slotPtr->slotName);
+   nextSlot = GenConstant(theEnv,SYMBOL_TYPE,slotPtr->slotName);
    nextSlot->argList = newField;
 
    return(nextSlot);
@@ -400,10 +416,10 @@ static struct expr *ParseAssertSlotValues(
 /*   to the order of the values described by the deftemplate.            */
 /*************************************************************************/
 static struct expr *ReorderAssertSlotValues(
-  void *theEnv,
+  Environment *theEnv,
   struct templateSlot *slotPtr,
   struct expr *firstSlot,
-  int *error)
+  bool *error)
   {
    struct expr *firstArg = NULL;
    struct expr *lastArg = NULL, *newArg;
@@ -427,7 +443,7 @@ static struct expr *ReorderAssertSlotValues(
       if (*error)
         {
          ReturnExpression(theEnv,firstArg);
-         return(NULL);
+         return NULL;
         }
 
       /*=====================================*/
@@ -461,14 +477,14 @@ static struct expr *ReorderAssertSlotValues(
 /*   default value will be used.                               */
 /***************************************************************/
 static struct expr *GetSlotAssertValues(
-  void *theEnv,
+  Environment *theEnv,
   struct templateSlot *slotPtr,
   struct expr *firstSlot,
-  int *error)
+  bool *error)
   {
    struct expr *slotItem;
    struct expr *newArg, *tempArg;
-   DATA_OBJECT theDefault;
+   UDFValue theDefault;
    const char *nullBitMap = "\0";
 
    /*==================================================*/
@@ -500,12 +516,12 @@ static struct expr *GetSlotAssertValues(
 
       if (slotPtr->noDefault)
         {
-         PrintErrorID(theEnv,"TMPLTRHS",1,TRUE);
-         EnvPrintRouter(theEnv,WERROR,"Slot ");
-         EnvPrintRouter(theEnv,WERROR,slotPtr->slotName->contents);
-         EnvPrintRouter(theEnv,WERROR," requires a value because of its (default ?NONE) attribute.\n");
-         *error = TRUE;
-         return(NULL);
+         PrintErrorID(theEnv,"TMPLTRHS",1,true);
+         WriteString(theEnv,STDERR,"Slot '");
+         WriteString(theEnv,STDERR,slotPtr->slotName->contents);
+         WriteString(theEnv,STDERR,"' requires a value because of its (default ?NONE) attribute.\n");
+         *error = true;
+         return NULL;
         }
 
       /*===================================================*/
@@ -514,11 +530,11 @@ static struct expr *GetSlotAssertValues(
       /* the slot's constraints.                           */
       /*===================================================*/
 
-      else if ((slotPtr->defaultPresent == FALSE) &&
-               (slotPtr->defaultDynamic == FALSE))
+      else if ((slotPtr->defaultPresent == false) &&
+               (slotPtr->defaultDynamic == false))
         {
          DeriveDefaultFromConstraints(theEnv,slotPtr->constraints,&theDefault,
-                                      (int) slotPtr->multislot,TRUE);
+                                      slotPtr->multislot,true);
          newArg = ConvertValueToExpression(theEnv,&theDefault);
         }
 
@@ -540,7 +556,7 @@ static struct expr *GetSlotAssertValues(
 
    if (slotPtr->multislot)
      {
-      tempArg = GenConstant(theEnv,FACT_STORE_MULTIFIELD,EnvAddBitMap(theEnv,(void *) nullBitMap,1));
+      tempArg = GenConstant(theEnv,FACT_STORE_MULTIFIELD,AddBitMap(theEnv,(void *) nullBitMap,1));
       tempArg->argList = newArg;
       newArg = tempArg;
      }
@@ -565,7 +581,7 @@ static struct expr *FindAssertSlotItem(
       listOfSlots = listOfSlots->nextArg;
      }
 
-   return(NULL);
+   return NULL;
   }
 
 #endif /* DEFTEMPLATE_CONSTRUCT */

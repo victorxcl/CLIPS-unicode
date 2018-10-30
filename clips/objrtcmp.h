@@ -1,7 +1,7 @@
    /*******************************************************/
    /*      "C" Language Integrated Production System      */
    /*                                                     */
-   /*               CLIPS Version 6.30  08/16/14          */
+   /*             CLIPS Version 6.40  02/03/18            */
    /*                                                     */
    /*                                                     */
    /*******************************************************/
@@ -30,30 +30,33 @@
 /*            Added const qualifiers to remove C++           */
 /*            deprecation warnings.                          */
 /*                                                           */
+/*      6.31: Optimization for marking relevant alpha nodes  */
+/*            in the object pattern network.                 */
+/*                                                           */
+/*      6.40: Removed LOCALE definition.                     */
+/*                                                           */
+/*            Pragma once and other inclusion changes.       */
+/*                                                           */
+/*            Removed use of void pointers for specific      */
+/*            data structures.                               */
+/*                                                           */
 /*************************************************************/
 
 #ifndef _H_objrtcmp
+
+#pragma once
+
 #define _H_objrtcmp
 
 #if DEFRULE_CONSTRUCT && OBJECT_SYSTEM && (! RUN_TIME) && CONSTRUCT_COMPILER
 
-#ifndef _STDIO_INCLUDED_
 #include <stdio.h>
-#define _STDIO_INCLUDED_
-#endif
 
-#ifdef LOCALE
-#undef LOCALE
-#endif
-
-#ifdef _OBJRTCMP_SOURCE_
-#define LOCALE
-#else
-#define LOCALE extern
-#endif
-
-   LOCALE void                    ObjectPatternsCompilerSetup(void *);
-   LOCALE void                    ObjectPatternNodeReference(void *,void *,FILE *,int,int);
+   void                    ObjectPatternsCompilerSetup(Environment *);
+   void                    ObjectPatternNodeReference(Environment *,void *,FILE *,
+                                                      unsigned int,unsigned int);
+   void                    ClassAlphaLinkReference(Environment *,void *,FILE *,
+                                                   unsigned int,unsigned int);
 
 #endif /* DEFRULE_CONSTRUCT && OBJECT_SYSTEM && (! RUN_TIME) && CONSTRUCT_COMPILER */
 
