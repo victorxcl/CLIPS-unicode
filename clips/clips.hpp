@@ -12,16 +12,10 @@
 
 #pragma once
 
-extern "C"{
-// the code will be compiled by C++
-#   include "clips.h"
-}
-
 #include <functional>
 #include <cassert>
 
 namespace clips {
-    
     /* The following codes are supported for return values and argument types:
        +------+---------------------------------------------------+
        | Code | Type                                              |
@@ -239,5 +233,110 @@ namespace clips {
         user_function<i>(CLIPS, name, std::function<R(Args...)>(f), context);
     };
 
-}//namespace clips {
+}//namespace clips
 
+namespace clips {
+    using value = std::variant<std::monostate, long long, double, std::string>;
+
+    class CLIPS {
+        std::shared_ptr<Environment> env;
+    public:
+        CLIPS() {
+            this->env = std::shared_ptr<Environment>(CreateEnvironment(), [](Environment*x){
+                DestroyEnvironment(x);
+            });
+        }
+        operator Environment*() { return this->env.get(); }
+        inline bool clear() { return Clear(env.get()); }
+        inline void reset() { Reset(env.get()); }
+        inline long long run(long long steps = -1) { return Run(env.get(), steps); }
+        inline bool load(const char*file) {
+            LoadError ok = Load(env.get(), file);
+            assert(LE_NO_ERROR == ok);
+            return LE_NO_ERROR == ok;
+        }
+        inline bool load_from_string(const char*script) {
+            return LoadFromString(env.get(), script, std::strlen(script));
+        }
+        inline bool batch(const char*file) {
+            return Batch(env.get(), file);
+        }
+        inline bool batch_star(const char*file) {
+            return BatchStar(env.get(), file);
+        }
+        inline void build(const char*script) {
+            BuildError ok = Build(env.get(), script);
+            assert(BE_NO_ERROR == ok);
+        }
+        inline value eval(const char*script) {
+            value ret;
+            CLIPSValue value;
+            EvalError ok = Eval(env.get(), script, &value);
+            assert(EE_NO_ERROR == ok);
+            if (INTEGER_TYPE == value.header->type) {
+                ret = value.integerValue->contents;
+            }
+            if (FLOAT_TYPE == value.header->type) {
+                ret = value.floatValue->contents;
+            }
+            if (   SYMBOL_TYPE == value.header->type
+                || STRING_TYPE == value.header->type
+                || INSTANCE_NAME_TYPE == value.header->type) {
+                ret = value.lexemeValue->contents;
+            }
+            return ret;
+        }
+    };
+}//namespace clips
+
+#if CLIPS_HPP_TEST_WITH_CATCH_ENABLED
+#include <catch2/catch.hpp>
+TEST_CASE("expert system CLIPS hello world", "[CLIPS][ExpertSystem]") {
+    clips::CLIPS CLIPS;
+    REQUIRE(1 +2+3 == std::get<long long>(CLIPS.eval("(+ 1  2 3)")));
+    REQUIRE(1.+2+3 == std::get<   double>(CLIPS.eval("(+ 1. 2 3)")));
+    
+    REQUIRE("2019-10-10" == std::get<std::string>(CLIPS.eval("(str-cat 2019 - 10 - 10)")));
+    REQUIRE("2019-10-10" == std::get<std::string>(CLIPS.eval("(sym-cat 2019 - 10 - 10)")));
+}
+
+TEST_CASE("expert system CLIPS user defined function", "[CLIPS][ExpertSystem]") {
+    clips::CLIPS CLIPS;
+    SECTION("test build arguments code") {
+        using namespace std::string_literals;
+        char argumentsCode[128] = {'*', '\0'};
+        REQUIRE("*;v"s == clips::build_arguments_code<void,         void>::apply(argumentsCode, 1));
+        REQUIRE("*;b"s == clips::build_arguments_code<void,         bool>::apply(argumentsCode, 1));
+        REQUIRE("*;l"s == clips::build_arguments_code<void,         char>::apply(argumentsCode, 1));
+        REQUIRE("*;l"s == clips::build_arguments_code<void,        short>::apply(argumentsCode, 1));
+        REQUIRE("*;l"s == clips::build_arguments_code<void,          int>::apply(argumentsCode, 1));
+        REQUIRE("*;l"s == clips::build_arguments_code<void,         long>::apply(argumentsCode, 1));
+        REQUIRE("*;l"s == clips::build_arguments_code<void,    long long>::apply(argumentsCode, 1));
+        REQUIRE("*;d"s == clips::build_arguments_code<void,        float>::apply(argumentsCode, 1));
+        REQUIRE("*;d"s == clips::build_arguments_code<void,       double>::apply(argumentsCode, 1));
+        REQUIRE("*;d"s == clips::build_arguments_code<void,  long double>::apply(argumentsCode, 1));
+        
+        REQUIRE("*;s"s == clips::build_arguments_code<void,        char*>::apply(argumentsCode, 1));
+        REQUIRE("*;s"s == clips::build_arguments_code<void,  const char*>::apply(argumentsCode, 1));
+        REQUIRE("*;e"s == clips::build_arguments_code<void,        void*>::apply(argumentsCode, 1));
+        REQUIRE("*;e"s == clips::build_arguments_code<void, std::string*>::apply(argumentsCode, 1));
+        
+        REQUIRE("*;b"s == clips::build_arguments_code<void,       clips::boolean>::apply(argumentsCode, 1));
+        REQUIRE("*;s"s == clips::build_arguments_code<void,        clips::string>::apply(argumentsCode, 1));
+        REQUIRE("*;y"s == clips::build_arguments_code<void,        clips::symbol>::apply(argumentsCode, 1));
+        REQUIRE("*;n"s == clips::build_arguments_code<void, clips::instance_name>::apply(argumentsCode, 1));
+        
+#define TEST_ARGUMENTS bool, int, float, const char*, std::string, clips::string, clips::boolean, clips::symbol, clips::instance_name
+        clips::user_function<__LINE__>(CLIPS, "test", static_cast<void(*)(TEST_ARGUMENTS)>([](TEST_ARGUMENTS){ }));
+        REQUIRE("*;b;l;d;s;s;s;b;y;n"s == clips::build_arguments_code<void, TEST_ARGUMENTS>::apply(argumentsCode, 1));
+#undef  TEST_ARGUMENTS
+    }
+    
+    clips::user_function<__LINE__>(CLIPS, "hello", static_cast<clips::string(*)()>([]{ return clips::string{"hello"}; }));
+    clips::user_function<__LINE__>(CLIPS, "world", static_cast<clips::string(*)()>([]{ return clips::string{"world"}; }));
+    
+    REQUIRE("hello" == std::get<std::string>(CLIPS.eval("(hello)")));
+    REQUIRE("world" == std::get<std::string>(CLIPS.eval("(world)")));
+    REQUIRE("helloworld" == std::get<std::string>(CLIPS.eval("(str-cat (hello) (world))")));
+}
+#endif//CLIPS_HPP_TEST_WITH_CATCH_ENABLED
