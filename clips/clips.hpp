@@ -14,6 +14,8 @@
 
 #include <functional>
 #include <cassert>
+#include <vector>
+#include <any>
 
 namespace clips {
     /* The following codes are supported for return values and argument types:
@@ -34,10 +36,13 @@ namespace clips {
        |  *   | Any Type                                          |
        +------+---------------------------------------------------+ */
     
+    using integer       = long long;
+    using real          = double;
     using boolean       = std::tuple<std::string, std::integral_constant<char,'b'>>;
     using string        = std::tuple<std::string, std::integral_constant<char,'s'>>;
     using symbol        = std::tuple<std::string, std::integral_constant<char,'y'>>;
     using instance_name = std::tuple<std::string, std::integral_constant<char,'n'>>;
+    using multifield    = std::vector<std::any>;
     // ////////////////////////////////////////////////////////////////////////////////////////
     template<typename>struct type_code      {enum{value='*'};};// * Any Type
     template<>struct type_code<bool>        {enum{value='b'};};// b Boolean
@@ -67,7 +72,7 @@ namespace clips {
     template<>struct type_code<void>          {enum{value='v'};};// v Void—No Return Value
     //template<>struct type_code<double>      {enum{value='f'};};// f Fact Address
     //template<>struct type_code<short>       {enum{value='i'};};// i Instance Address
-    //template<>struct type_code<long>        {enum{value='m'};};// m Multifield
+    template<>struct type_code<multifield>    {enum{value='m'};};// m Multifield
     //template<typename T>struct type_code<T*>  {enum{value=std::is_same_v<std::remove_const_t<T>,char>?'s':'e'};};// e External Address
     template<typename T>struct type_code<T*>     {enum{value='e'};};// e External Address
     template<typename T>struct type_code<const T>{enum{value=type_code<T>::value};};
@@ -236,7 +241,6 @@ namespace clips {
 }//namespace clips
 
 namespace clips {
-    using value = std::variant<std::monostate, long long, double, std::string>;
 
     class CLIPS {
         std::shared_ptr<Environment> env;
@@ -268,8 +272,8 @@ namespace clips {
             BuildError ok = Build(env.get(), script);
             assert(BE_NO_ERROR == ok);
         }
-        inline value eval(const char*script) {
-            value ret;
+        inline std::any eval(const char*script) {
+            std::any ret;
             CLIPSValue value;
             EvalError ok = Eval(env.get(), script, &value);
             assert(EE_NO_ERROR == ok);
@@ -279,10 +283,14 @@ namespace clips {
             if (FLOAT_TYPE == value.header->type) {
                 ret = value.floatValue->contents;
             }
-            if (   SYMBOL_TYPE == value.header->type
-                || STRING_TYPE == value.header->type
-                || INSTANCE_NAME_TYPE == value.header->type) {
-                ret = value.lexemeValue->contents;
+            if (SYMBOL_TYPE == value.header->type) {
+                ret = clips::symbol{value.lexemeValue->contents};
+            }
+            if (STRING_TYPE == value.header->type) {
+                ret = clips::string{value.lexemeValue->contents};
+            }
+            if (INSTANCE_NAME_TYPE == value.header->type) {
+                ret = clips::instance_name{value.lexemeValue->contents};
             }
             return ret;
         }
@@ -293,11 +301,11 @@ namespace clips {
 #include <catch2/catch.hpp>
 TEST_CASE("expert system CLIPS hello world", "[CLIPS][ExpertSystem]") {
     clips::CLIPS CLIPS;
-    REQUIRE(1 +2+3 == std::get<long long>(CLIPS.eval("(+ 1  2 3)")));
-    REQUIRE(1.+2+3 == std::get<   double>(CLIPS.eval("(+ 1. 2 3)")));
+    REQUIRE(1 +2+3 == std::any_cast<clips::integer>(CLIPS.eval("(+ 1  2 3)")));
+    REQUIRE(1.+2+3 == std::any_cast<clips::real   >(CLIPS.eval("(+ 1. 2 3)")));
     
-    REQUIRE("2019-10-10" == std::get<std::string>(CLIPS.eval("(str-cat 2019 - 10 - 10)")));
-    REQUIRE("2019-10-10" == std::get<std::string>(CLIPS.eval("(sym-cat 2019 - 10 - 10)")));
+    REQUIRE(clips::string{"2019-10-10"} == std::any_cast<clips::string>(CLIPS.eval("(str-cat 2019 - 10 - 10)")));
+    REQUIRE(clips::symbol{"2019-10-10"} == std::any_cast<clips::symbol>(CLIPS.eval("(sym-cat 2019 - 10 - 10)")));
 }
 
 TEST_CASE("expert system CLIPS user defined function", "[CLIPS][ExpertSystem]") {
@@ -335,8 +343,8 @@ TEST_CASE("expert system CLIPS user defined function", "[CLIPS][ExpertSystem]") 
     clips::user_function<__LINE__>(CLIPS, "hello", static_cast<clips::string(*)()>([]{ return clips::string{"hello"}; }));
     clips::user_function<__LINE__>(CLIPS, "world", static_cast<clips::string(*)()>([]{ return clips::string{"world"}; }));
     
-    REQUIRE("hello" == std::get<std::string>(CLIPS.eval("(hello)")));
-    REQUIRE("world" == std::get<std::string>(CLIPS.eval("(world)")));
-    REQUIRE("helloworld" == std::get<std::string>(CLIPS.eval("(str-cat (hello) (world))")));
+    REQUIRE(clips::string{"hello"} == std::any_cast<clips::string>(CLIPS.eval("(hello)")));
+    REQUIRE(clips::string{"world"} == std::any_cast<clips::string>(CLIPS.eval("(world)")));
+    REQUIRE(clips::string{"helloworld"} == std::any_cast<clips::string>(CLIPS.eval("(str-cat (hello) (world))")));
 }
 #endif//CLIPS_HPP_TEST_WITH_CATCH_ENABLED
