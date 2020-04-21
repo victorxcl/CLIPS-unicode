@@ -5,3 +5,8 @@
    /*                                                     */
    /*               USER SETUP HEADER FILE                */
    /*******************************************************/
+#include <boost/predef.h>
+
+#if BOOST_OS_IOS
+#   define system(x) EXIT_FAILURE
+#endif// BOOST_OS_IOS

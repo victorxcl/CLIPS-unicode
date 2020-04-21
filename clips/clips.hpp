@@ -15,6 +15,7 @@
 #include <functional>
 #include <cassert>
 #include <vector>
+#include <string>
 #include <any>
 
 namespace clips {
