@@ -37,13 +37,14 @@ namespace clips {
        |  *   | Any Type                                          |
        +------+---------------------------------------------------+ */
     
-    using integer       = long long;
-    using real          = double;
-    using boolean       = std::tuple<std::string, std::integral_constant<char,'b'>>;
-    using string        = std::tuple<std::string, std::integral_constant<char,'s'>>;
-    using symbol        = std::tuple<std::string, std::integral_constant<char,'y'>>;
-    using instance_name = std::tuple<std::string, std::integral_constant<char,'n'>>;
-    using multifield    = std::vector<std::any>;
+    using integer           = long long;
+    using real              = double;
+    using boolean           = std::tuple<std::string, std::integral_constant<char,'b'>>;
+    using string            = std::tuple<std::string, std::integral_constant<char,'s'>>;
+    using symbol            = std::tuple<std::string, std::integral_constant<char,'y'>>;
+    using instance_name     = std::tuple<std::string, std::integral_constant<char,'n'>>;
+    //using external_address  = std::tuple<void*,       std::integral_constant<char,'e'>>;
+    using multifield        = std::vector<std::any>;
     // ////////////////////////////////////////////////////////////////////////////////////////
     template<typename>struct type_code      {enum{value='*'};};// * Any Type
     template<>struct type_code<bool>        {enum{value='b'};};// b Boolean
@@ -176,20 +177,37 @@ namespace clips {
         template<>struct build_n<0xE> { typedef n<0x1,0x2,0x3,0x4,0x5,0x6,0x7,0x8,0x9,0xA,0xB,0xC,0xD,0xE> type; };
         template<>struct build_n<0xF> { typedef n<0x1,0x2,0x3,0x4,0x5,0x6,0x7,0x8,0x9,0xA,0xB,0xC,0xD,0xE,0xF> type; };
         
-        template<typename R,typename A,typename B>struct _invoke;
-        template<typename R,typename...Args,int...i> struct _invoke<R, m<Args...>, n<i...>> {
+        template<typename R, typename, typename A,typename B>struct _invoke;
+        template<typename R, typename...Args, int...i> struct _invoke<R, std::integral_constant<int, 0>, m<Args...>, n<i...>> {
             static R _function(Environment*CLIPS,std::function<R(Args...)>&&theFunc, UDFContext*udfc/*=nullptr*/) {
                 return theFunc(argument<Args>::value(CLIPS, udfc, i)...);
             }
         };
+        template<typename R, typename...Args, int...i> struct _invoke<R, Environment*, m<Args...>, n<i...>> {
+            static R _function(Environment*CLIPS,std::function<R(Environment*, Args...)>&&theFunc, UDFContext*udfc/*=nullptr*/) {
+                return theFunc(CLIPS, argument<Args>::value(CLIPS, udfc, i)...);
+            }
+        };
     }
     
-    template<typename R,typename...Args>
+    template<typename R, typename...Args>
     R invoke_function(Environment*CLIPS,std::function<R(Args...)>&&lambda, UDFContext*udfc/*=nullptr*/) {
         using namespace __private;
         static_assert(sizeof...(Args)<=n<>::max_value, "Error: Only support max 15 arguments in CLIPS's C function");
-        return _invoke<R, m<Args...>, typename build_n<sizeof...(Args)>::type>
+        return _invoke<R, std::integral_constant<int,0>, m<Args...>, typename build_n<sizeof...(Args)>::type>
         /*  */ ::_function(CLIPS, std::move(lambda), udfc);
+    }
+    template<typename R, typename...Args>
+    R invoke_function(Environment*CLIPS,std::function<R(Environment*,Args...)>&&lambda, UDFContext*udfc/*=nullptr*/) {
+        using namespace __private;
+        static_assert(sizeof...(Args)<=n<>::max_value, "Error: Only support max 15 arguments in CLIPS's C function");
+        return _invoke<R, Environment*, m<Args...>, typename build_n<sizeof...(Args)>::type>
+        /*  */ ::_function(CLIPS, std::move(lambda), udfc);
+    }
+
+    template<typename R>
+    R invoke_function(Environment*CLIPS,std::function<R(Environment*)>&&lambda, UDFContext*udfc/*=nullptr*/) {
+        return lambda(CLIPS);
     }
 
     template<typename R>
@@ -197,22 +215,37 @@ namespace clips {
         return lambda();
     }
     
-    template<unsigned i,class R,class...Args> struct is_void_return {
+    template<unsigned i, class R, class...Args> struct is_void_return {
         static std::function<R(Args...)> lambda;
         static void f(Environment*CLIPS, UDFContext *udfc, UDFValue*udfv) {
             enum { code = return_code<R>::value };
             select_action<code>::apply(CLIPS, udfv, invoke_function(CLIPS, std::move(lambda), udfc));
         }
     };
-    template<unsigned i,class...Args> struct is_void_return<i, void, Args...> {
+    template<unsigned i, class...Args> struct is_void_return<i, void, Args...> {
         static std::function<void(Args...)>lambda;
         static void f(Environment*CLIPS, UDFContext *udfc, UDFValue*udfv) {
             invoke_function(CLIPS,std::move(lambda), udfc);
         }
     };
+    template<unsigned i,class R,class...Args> struct is_void_return<i, R, Environment*, Args...> {
+        static std::function<R(Environment*, Args...)> lambda;
+        static void f(Environment*CLIPS, UDFContext *udfc, UDFValue*udfv) {
+            enum { code = return_code<R>::value };
+            select_action<code>::apply(CLIPS, udfv, invoke_function(CLIPS, std::move(lambda), udfc));
+        }
+    };
+    template<unsigned i,class...Args> struct is_void_return<i, void, Environment*, Args...> {
+        static std::function<void(Environment*, Args...)>lambda;
+        static void f(Environment*CLIPS, UDFContext *udfc, UDFValue*udfv) {
+            invoke_function(CLIPS,std::move(lambda), udfc);
+        }
+    };
     
-    template<unsigned i, typename R, typename...Args> std::function<   R(Args...)> is_void_return<i,   R,Args...>::lambda;
-    template<unsigned i, /*       */ typename...Args> std::function<void(Args...)> is_void_return<i,void,Args...>::lambda;
+    template<unsigned i, typename R, typename...Args> std::function<   R(/*          */Args...)> is_void_return<i,   R,Args...>::lambda;
+    template<unsigned i, /*       */ typename...Args> std::function<void(/*          */Args...)> is_void_return<i,void,Args...>::lambda;
+    template<unsigned i, typename R, typename...Args> std::function<   R(Environment*, Args...)> is_void_return<i,    R, Environment*, Args...>::lambda;
+    template<unsigned i, /*       */ typename...Args> std::function<void(Environment*, Args...)> is_void_return<i, void, Environment*, Args...>::lambda;
     template<unsigned i, typename R, typename...Args>
     void user_function(Environment*CLIPS, const char*name, std::function<R(Args...)>lambda, void*context=nullptr) {
         using namespace __private;
@@ -220,6 +253,26 @@ namespace clips {
         build_arguments_code<R, Args...>::apply(argumentsCode, 1);
         char returnCode[2] = {return_code<R>::value, '\0'};
         using UDF = is_void_return<i,R,Args...>;
+        UDF::lambda = lambda;
+        AddUDFError ok = \
+        AddUDF(/* Environment*                   theEnv = */CLIPS,
+               /* const char *        clipsFunctionName = */name,
+               /* const char *              returnTypes = */returnCode,
+               /* unsigned short                minArgs = */sizeof...(Args),
+               /* unsigned short                maxArgs = */sizeof...(Args),
+               /* const char *            argumentTypes = */argumentsCode,
+               /* UserDefinedFunction *cFunctionPointer = */UDF::f,
+               /* const char *            cFunctionName = */name,
+               /* void *                        context = */context);
+        assert(AUE_NO_ERROR == ok);
+    };
+    template<unsigned i, typename R, typename...Args>
+    void user_function(Environment*CLIPS, const char*name, std::function<R(Environment*, Args...)>lambda, void*context=nullptr) {
+        using namespace __private;
+        char argumentsCode[(1+n<>::max_value)*2] = {'*', '\0'};
+        build_arguments_code<R, Args...>::apply(argumentsCode, 1);// 参数数量和上面的不一样
+        char returnCode[2] = {return_code<R>::value, '\0'};
+        using UDF = is_void_return<i, R, Environment*, Args...>; // 这里也和上面不一样
         UDF::lambda = lambda;
         AddUDFError ok = \
         AddUDF(/* Environment*                   theEnv = */CLIPS,
@@ -246,10 +299,16 @@ namespace clips {
     class CLIPS {
         std::shared_ptr<Environment> env;
     public:
-        CLIPS() {
-            this->env = std::shared_ptr<Environment>(CreateEnvironment(), [](Environment*x){
-                DestroyEnvironment(x);
-            });
+        explicit CLIPS(Environment*environment=nullptr) {
+            if (nullptr == environment) {
+                this->env = std::shared_ptr<Environment>(CreateEnvironment(), [](Environment*x){
+                    DestroyEnvironment(x);
+                });
+            } else {
+                this->env = std::shared_ptr<Environment>(environment, [](Environment*x){
+                    
+                });
+            }
         }
         operator Environment*() { return this->env.get(); }
         inline bool clear() { return Clear(env.get()); }
@@ -293,10 +352,23 @@ namespace clips {
             if (INSTANCE_NAME_TYPE == value.header->type) {
                 ret = clips::instance_name{value.lexemeValue->contents};
             }
+            if (EXTERNAL_ADDRESS_TYPE == value.header->type) {
+                ret = value.externalAddressValue->contents;
+            }
             return ret;
         }
     };
 }//namespace clips
+
+#ifndef CLIPS_EXTENSION_NETWORK_ENABLED
+#   define CLIPS_EXTENSION_NETWORK_ENABLED 1
+#endif//CLIPS_EXTENSION_NETWORK_ENABLED
+
+#if CLIPS_EXTENSION_NETWORK_ENABLED
+namespace clips::extension {
+    void network_initialize(Environment*environment);
+}
+#endif// CLIPS_EXTENSION_NETWORK_ENABLED
 
 #if CLIPS_HPP_TEST_WITH_CATCH_ENABLED
 #include <catch2/catch.hpp>
@@ -347,5 +419,13 @@ TEST_CASE("expert system CLIPS user defined function", "[CLIPS][ExpertSystem]") 
     REQUIRE(clips::string{"hello"} == std::any_cast<clips::string>(CLIPS.eval("(hello)")));
     REQUIRE(clips::string{"world"} == std::any_cast<clips::string>(CLIPS.eval("(world)")));
     REQUIRE(clips::string{"helloworld"} == std::any_cast<clips::string>(CLIPS.eval("(str-cat (hello) (world))")));
+    
+    
+    clips::user_function<__LINE__>(CLIPS, "good", static_cast<clips::string(*)(Environment*)>([](Environment*){ return clips::string{"good"}; }));
+    clips::user_function<__LINE__>(CLIPS, "luck", static_cast<clips::string(*)(Environment*)>([](Environment*){ return clips::string{"luck"}; }));
+    
+    REQUIRE(clips::string{"good"} == std::any_cast<clips::string>(CLIPS.eval("(good)")));
+    REQUIRE(clips::string{"luck"} == std::any_cast<clips::string>(CLIPS.eval("(luck)")));
+    REQUIRE(clips::string{"goodluck"} == std::any_cast<clips::string>(CLIPS.eval("(str-cat (good) (luck))")));
 }
 #endif//CLIPS_HPP_TEST_WITH_CATCH_ENABLED
