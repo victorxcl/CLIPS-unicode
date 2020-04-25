@@ -364,19 +364,11 @@ namespace clips {
 #   define CLIPS_EXTENSION_SOCKET_ENABLED 1
 #endif//CLIPS_EXTENSION_SOCKET_ENABLED
 
-#ifndef CLIPS_EXTENSION_NETWORK_ENABLED
-#   define CLIPS_EXTENSION_NETWORK_ENABLED 0
-#endif//CLIPS_EXTENSION_NETWORK_ENABLED
-
 namespace clips::extension {
 
 #if CLIPS_EXTENSION_SOCKET_ENABLED
     void socket_initialize(Environment*environment);
 #endif// CLIPS_EXTENSION_SOCKET_ENABLED
-
-#if CLIPS_EXTENSION_NETWORK_ENABLED
-    void network_initialize(Environment*environment);
-#endif// CLIPS_EXTENSION_NETWORK_ENABLED
 
 }// namespace clips::extension {
 
