@@ -72,18 +72,24 @@ void _socket_make_session(Environment*environment, std::shared_ptr<tcp::socket>s
                 boost::asio::read_until(*session->socket, buffer, '\n', ignored_error);
             }
             
-            if (buffer.size() > 0) {
-                std::istream is(&buffer);
-                return is.get();
-            }
-            
-            return 0;
+            std::istream is(&buffer);
+            return is.get();
         };
+        auto RouterUnreadFunction =[](Environment *environment,const char *logicalName,int inchar,void *context)->int {
+            auto session = static_cast<socketData::Session*>(context);
+            
+            auto&buffer = session->buffer;
+            std::istream is(&buffer);
+            is.putback(inchar);
+            
+            return static_cast<int>(true);
+        };
+        
         AddRouter(environment, ROUTER, 40,
                   /* RouterQueryFunction  * */RouterQueryFunction,
                   /* RouterWriteFunction  * */RouterWriteFunction,
                   /* RouterReadFunction   * */RouterReadFunction,
-                  /* RouterUnreadFunction * */nullptr,
+                  /* RouterUnreadFunction * */RouterUnreadFunction,
                   /* RouterExitFunction   * */nullptr,
                   /* void                 * */session.get());
     }
