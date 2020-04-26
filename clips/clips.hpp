@@ -48,52 +48,55 @@ namespace clips {
 //    inline std::ostream&operator<<(std::ostream&os, const string&x) { return os << std::get<0>(x); }
 //    inline std::ostream&operator<<(std::ostream&os, const symbol&x) { return os << std::get<0>(x); }
     // ////////////////////////////////////////////////////////////////////////////////////////
-    template<typename>struct type_code      {enum{value='*'};};// * Any Type
-    template<>struct type_code<bool>        {enum{value='b'};};// b Boolean
-    template<>struct type_code<boolean>     {enum{value='b'};};// b Boolean
+    template<typename>struct type_code      {enum{value='*', expect_bits=0};};// * Any Type
+    template<>struct type_code<bool>        {enum{value='b', expect_bits=BOOLEAN_BIT};};// b Boolean
+    template<>struct type_code<boolean>     {enum{value='b', expect_bits=BOOLEAN_BIT};};// b Boolean
 
-    template<>struct type_code<float>       {enum{value='d'};};// d Double Precision Float
-    template<>struct type_code<double>      {enum{value='d'};};// d Double Precision Float
-    template<>struct type_code<long double> {enum{value='d'};};// d Double Precision Float
+    template<>struct type_code<float>       {enum{value='d', expect_bits=FLOAT_BIT};};// d Double Precision Float
+    template<>struct type_code<double>      {enum{value='d', expect_bits=FLOAT_BIT};};// d Double Precision Float
+    template<>struct type_code<long double> {enum{value='d', expect_bits=FLOAT_BIT};};// d Double Precision Float
 
-    template<>struct type_code</*     */char>      {enum{value='l'};};// l Long Long Integer
-    template<>struct type_code</*     */short>     {enum{value='l'};};// l Long Long Integer
-    template<>struct type_code</*     */int>       {enum{value='l'};};// l Long Long Integer
-    template<>struct type_code</*     */long>      {enum{value='l'};};// l Long Long Integer
-    template<>struct type_code</*     */long long> {enum{value='l'};};// l Long Long Integer
-    template<>struct type_code<unsigned char>      {enum{value='l'};};// l Long Long Integer
-    template<>struct type_code<unsigned short>     {enum{value='l'};};// l Long Long Integer
-    template<>struct type_code<unsigned int>       {enum{value='l'};};// l Long Long Integer
-    template<>struct type_code<unsigned long>      {enum{value='l'};};// l Long Long Integer
-    template<>struct type_code<unsigned long long> {enum{value='l'};};// l Long Long Integer
+    template<>struct type_code</*     */char>      {enum{value='l', expect_bits=INTEGER_BIT};};// l Long Long Integer
+    template<>struct type_code</*     */short>     {enum{value='l', expect_bits=INTEGER_BIT};};// l Long Long Integer
+    template<>struct type_code</*     */int>       {enum{value='l', expect_bits=INTEGER_BIT};};// l Long Long Integer
+    template<>struct type_code</*     */long>      {enum{value='l', expect_bits=INTEGER_BIT};};// l Long Long Integer
+    template<>struct type_code</*     */long long> {enum{value='l', expect_bits=INTEGER_BIT};};// l Long Long Integer
+    template<>struct type_code<unsigned char>      {enum{value='l', expect_bits=INTEGER_BIT};};// l Long Long Integer
+    template<>struct type_code<unsigned short>     {enum{value='l', expect_bits=INTEGER_BIT};};// l Long Long Integer
+    template<>struct type_code<unsigned int>       {enum{value='l', expect_bits=INTEGER_BIT};};// l Long Long Integer
+    template<>struct type_code<unsigned long>      {enum{value='l', expect_bits=INTEGER_BIT};};// l Long Long Integer
+    template<>struct type_code<unsigned long long> {enum{value='l', expect_bits=INTEGER_BIT};};// l Long Long Integer
 
-    template<>struct type_code<      char*>   {enum{value='s'};};// s String
-    template<>struct type_code<const char*>   {enum{value='s'};};// s String
-    template<>struct type_code<std::string>   {enum{value='s'};};// s String
-    template<>struct type_code<string>        {enum{value='s'};};// s String
-    template<>struct type_code<symbol>        {enum{value='y'};};// y Symbol
-    template<>struct type_code<instance_name> {enum{value='n'};};// n Instance Name
-    template<>struct type_code<void>          {enum{value='v'};};// v Void—No Return Value
-    //template<>struct type_code<double>      {enum{value='f'};};// f Fact Address
-    //template<>struct type_code<short>       {enum{value='i'};};// i Instance Address
-    template<>struct type_code<multifield>    {enum{value='m'};};// m Multifield
-    //template<typename T>struct type_code<T*>  {enum{value=std::is_same_v<std::remove_const_t<T>,char>?'s':'e'};};// e External Address
-    template<typename T>struct type_code<T*>     {enum{value='e'};};// e External Address
-    template<typename T>struct type_code<const T>{enum{value=type_code<T>::value};};
+    template<>struct type_code<      char*>   {enum{value='s', expect_bits=STRING_BIT|SYMBOL_BIT};};// s String, y Symbol
+    template<>struct type_code<const char*>   {enum{value='s', expect_bits=STRING_BIT|SYMBOL_BIT};};// s String, y Symbol
+    template<>struct type_code<std::string>   {enum{value='s', expect_bits=STRING_BIT|SYMBOL_BIT};};// s String, y Symbol
+    template<>struct type_code<string>        {enum{value='s', expect_bits=STRING_BIT           };};// s String
+    template<>struct type_code<symbol>        {enum{value='y', expect_bits=SYMBOL_BIT           };};// y Symbol
+    template<>struct type_code<instance_name> {enum{value='n', expect_bits=INSTANCE_NAME_BIT    };};// n Instance Name
+    template<>struct type_code<void>          {enum{value='v', expect_bits=VOID_BIT             };};// v Void—No Return Value
+  //template<>struct type_code<double>        {enum{value='f', expect_bits=VOID_BIT             };};// f Fact Address
+  //template<>struct type_code<short>         {enum{value='i', expect_bits=VOID_BIT             };};// i Instance Address
+    template<>struct type_code<multifield>    {enum{value='m', expect_bits=MULTIFIELD_BIT       };};// m Multifield
+    template<typename T>struct type_code<T*>  {enum{value='e', expect_bits=EXTERNAL_ADDRESS_BIT};};// e External Address
+
+    template<typename T>struct type_code<const T>{ enum{
+        value=type_code<T>::value,
+        expect_bits=type_code<T>::expect_bits
+    };};
 
     template<typename T>using   return_code = type_code<T>;
     template<typename T>using argument_code = type_code<T>;
 
     template<typename>struct argument;
-#define CLIPS_ARGUMENT_VALUE(float, udfv_contents)                          \
-/**/    static float value(Environment*CLIPS, UDFContext *udfc, unsigned i){\
-/**/        UDFValue udfv;                                                  \
-/**/        UDFNthArgument(udfc, i, argument_code<float>::value, &udfv);    \
-/**/        return udfv_contents;                                           \
+#define CLIPS_ARGUMENT_VALUE(float, udfv_contents)                              \
+/**/    static float value(Environment*CLIPS, UDFContext *udfc, unsigned i){    \
+/**/        UDFValue udfv;                                                      \
+/**/        UDFNthArgument(udfc, i, argument_code<float>::expect_bits, &udfv);  \
+/**/        return udfv_contents;                                               \
 /**/    }/* CLIPS_ARGUMENT_VALUE */
-#define CLIPS_ARGUMENT_TEMPLATE(float, udfv_contents)                       \
-/**/    template<>struct argument<float> {                                  \
-/**/        CLIPS_ARGUMENT_VALUE(float, udfv_contents)                      \
+#define CLIPS_ARGUMENT_TEMPLATE(float, udfv_contents)                           \
+/**/    template<>struct argument<float> {                                      \
+/**/        CLIPS_ARGUMENT_VALUE(float, udfv_contents)                          \
 /**/    };/* CLIPS_ARGUMENT_TEMPLATE */
 
     CLIPS_ARGUMENT_TEMPLATE(             float, /*                      */udfv.floatValue->contents)
