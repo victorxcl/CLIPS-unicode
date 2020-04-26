@@ -94,18 +94,18 @@ namespace clips {
 /**/        CLIPS_ARGUMENT_VALUE(float, udfv_contents)                      \
 /**/    };/* CLIPS_ARGUMENT_TEMPLATE */
 
-    CLIPS_ARGUMENT_TEMPLATE(             float, udfv.floatValue->contents)
-    CLIPS_ARGUMENT_TEMPLATE(            double, udfv.floatValue->contents)
-    CLIPS_ARGUMENT_TEMPLATE(              char, udfv.integerValue->contents)
-    CLIPS_ARGUMENT_TEMPLATE(             short, udfv.integerValue->contents)
-    CLIPS_ARGUMENT_TEMPLATE(               int, udfv.integerValue->contents)
-    CLIPS_ARGUMENT_TEMPLATE(              long, udfv.integerValue->contents)
-    CLIPS_ARGUMENT_TEMPLATE(         long long, udfv.integerValue->contents)
-    CLIPS_ARGUMENT_TEMPLATE(unsigned      char, udfv.integerValue->contents)
-    CLIPS_ARGUMENT_TEMPLATE(unsigned     short, udfv.integerValue->contents)
-    CLIPS_ARGUMENT_TEMPLATE(unsigned       int, udfv.integerValue->contents)
-    CLIPS_ARGUMENT_TEMPLATE(unsigned      long, udfv.integerValue->contents)
-    CLIPS_ARGUMENT_TEMPLATE(unsigned long long, udfv.integerValue->contents)
+    CLIPS_ARGUMENT_TEMPLATE(             float, /*                      */udfv.floatValue->contents)
+    CLIPS_ARGUMENT_TEMPLATE(            double, /*                      */udfv.floatValue->contents)
+    CLIPS_ARGUMENT_TEMPLATE(              char, /*                      */udfv.integerValue->contents)
+    CLIPS_ARGUMENT_TEMPLATE(             short, /*                      */udfv.integerValue->contents)
+    CLIPS_ARGUMENT_TEMPLATE(               int, static_cast<         int>(udfv.integerValue->contents))
+    CLIPS_ARGUMENT_TEMPLATE(              long, /*                      */udfv.integerValue->contents)
+    CLIPS_ARGUMENT_TEMPLATE(         long long, /*                      */udfv.integerValue->contents)
+    CLIPS_ARGUMENT_TEMPLATE(unsigned      char, /*                      */udfv.integerValue->contents)
+    CLIPS_ARGUMENT_TEMPLATE(unsigned     short, /*                      */udfv.integerValue->contents)
+    CLIPS_ARGUMENT_TEMPLATE(unsigned       int, static_cast<unsigned int>(udfv.integerValue->contents))
+    CLIPS_ARGUMENT_TEMPLATE(unsigned      long, /*                      */udfv.integerValue->contents)
+    CLIPS_ARGUMENT_TEMPLATE(unsigned long long, /*                      */udfv.integerValue->contents)
 
 
     CLIPS_ARGUMENT_TEMPLATE(              bool,               udfv.lexemeValue != FalseSymbol(CLIPS))
@@ -127,22 +127,22 @@ namespace clips {
 #undef CLIPS_ARGUMENT_VALUE
 #undef CLIPS_ARGUMENT_TEMPLATE
     
-    template<char code> struct select_action;
-#define CLIPS_SELECT_ACTION(code, CreateValue)                  \
-/**/    template<> struct select_action<code> {                 \
+    template<char code> struct create_primitive_value;
+#define CLIPS_CREATE_PRIMITIVE_VALUE(code, CreateValue)         \
+/**/    template<> struct create_primitive_value<code> {        \
 /**/        template<typename R> static                         \
 /**/        void apply(Environment*CLIPS, UDFValue*udfv, R&&x){ \
 /**/            udfv->value = CreateValue/*(CLIPS, x)*/;        \
 /**/        }                                                   \
 /**/    };/* CLIPS_SELECT_ACTION */
-    CLIPS_SELECT_ACTION('b', CreateBoolean/*    */(CLIPS,std::get<0>(x).c_str()))
-    CLIPS_SELECT_ACTION('s', CreateString/*     */(CLIPS,std::get<0>(x).c_str()))
-    CLIPS_SELECT_ACTION('y', CreateSymbol/*     */(CLIPS,std::get<0>(x).c_str()))
-    CLIPS_SELECT_ACTION('n', CreateInstanceName   (CLIPS,std::get<0>(x).c_str()))
-    CLIPS_SELECT_ACTION('d', CreateFloat/*      */(CLIPS,x))
-    CLIPS_SELECT_ACTION('l', CreateInteger/*    */(CLIPS,x))
-    CLIPS_SELECT_ACTION('e', CreateExternalAddress(CLIPS,x))
-#undef CLIPS_SELECT_ACTION
+    CLIPS_CREATE_PRIMITIVE_VALUE('b', CreateBoolean/*    */(CLIPS,std::get<0>(x).c_str()))
+    CLIPS_CREATE_PRIMITIVE_VALUE('s', CreateString/*     */(CLIPS,std::get<0>(x).c_str()))
+    CLIPS_CREATE_PRIMITIVE_VALUE('y', CreateSymbol/*     */(CLIPS,std::get<0>(x).c_str()))
+    CLIPS_CREATE_PRIMITIVE_VALUE('n', CreateInstanceName   (CLIPS,std::get<0>(x).c_str()))
+    CLIPS_CREATE_PRIMITIVE_VALUE('d', CreateFloat/*      */(CLIPS,x))
+    CLIPS_CREATE_PRIMITIVE_VALUE('l', CreateInteger/*    */(CLIPS,x))
+    CLIPS_CREATE_PRIMITIVE_VALUE('e', CreateExternalAddress(CLIPS,x))
+#undef CLIPS_CREATE_PRIMITIVE_VALUE
     
     template<typename R, typename ... Args>struct build_arguments_code;
     template<typename R, typename A1, typename ... Args>
@@ -219,7 +219,7 @@ namespace clips {
         static std::function<R(Args...)> lambda;
         static void f(Environment*CLIPS, UDFContext *udfc, UDFValue*udfv) {
             enum { code = return_code<R>::value };
-            select_action<code>::apply(CLIPS, udfv, invoke_function(CLIPS, std::move(lambda), udfc));
+            create_primitive_value<code>::apply(CLIPS, udfv, invoke_function(CLIPS, std::move(lambda), udfc));
         }
     };
     template<unsigned i, class...Args> struct is_void_return<i, void, Args...> {
@@ -232,7 +232,7 @@ namespace clips {
         static std::function<R(Environment*, Args...)> lambda;
         static void f(Environment*CLIPS, UDFContext *udfc, UDFValue*udfv) {
             enum { code = return_code<R>::value };
-            select_action<code>::apply(CLIPS, udfv, invoke_function(CLIPS, std::move(lambda), udfc));
+            create_primitive_value<code>::apply(CLIPS, udfv, invoke_function(CLIPS, std::move(lambda), udfc));
         }
     };
     template<unsigned i,class...Args> struct is_void_return<i, void, Environment*, Args...> {
