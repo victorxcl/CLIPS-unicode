@@ -383,6 +383,10 @@ namespace clips {
 #   define CLIPS_EXTENSION_SOCKET_ENABLED 1
 #endif//CLIPS_EXTENSION_SOCKET_ENABLED
 
+#ifndef CLIPS_EXTENSION_ZEROMQ_ENABLED
+#   define CLIPS_EXTENSION_ZEROMQ_ENABLED 1
+#endif//CLIPS_EXTENSION_ZEROMQ_ENABLED
+
 namespace clips::extension {
 
 #if CLIPS_EXTENSION_TEST_BENCH_ENABLED
@@ -393,6 +397,10 @@ namespace clips::extension {
 #if CLIPS_EXTENSION_SOCKET_ENABLED
     void socket_initialize(Environment*environment);
 #endif// CLIPS_EXTENSION_SOCKET_ENABLED
+
+#if CLIPS_EXTENSION_ZEROMQ_ENABLED
+    void zeromq_initialize(Environment*environment);
+#endif// CLIPS_EXTENSION_ZEROMQ_ENABLED
 
 }// namespace clips::extension {
 

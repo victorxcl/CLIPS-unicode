@@ -19,6 +19,10 @@ void UserFunctions(Environment *environment)
     clips::extension::socket_initialize(environment);
 #endif//CLIPS_EXTENSION_SOCKET_ENABLED
     
+#if CLIPS_EXTENSION_ZEROMQ_ENABLED
+    clips::extension::zeromq_initialize(environment);
+#endif//CLIPS_EXTENSION_ZEROMQ_ENABLED
+    
 }
 
 #if CLIPS_EXTENSION_TEST_BENCH_ENABLED
@@ -104,13 +108,14 @@ void test_bench_execute()
 
 #endif//CLIPS_EXTENSION_TEST_BENCH_ENABLED
 
-#if CLIPS_EXTENSION_SOCKET_ENABLED && 1
+#if CLIPS_EXTENSION_SOCKET_ENABLED
 #include <boost/asio.hpp>
 #include <iostream>
 #include <unordered_map>
 #include <array>
 
 namespace clips::extension {
+
 using boost::asio::ip::tcp;
 struct socketData {
     boost::asio::io_context         io_context;
@@ -241,3 +246,170 @@ void socket_initialize(Environment*environment)
 }// namespace clips::extension {
 
 #endif// CLIPS_EXTENSION_SOCKET_ENABLED
+
+#if CLIPS_EXTENSION_ZEROMQ_ENABLED
+
+#include <zmq.hpp>
+#include <iostream>
+#include <unordered_map>
+#include <boost/asio/streambuf.hpp>
+
+namespace clips::extension {
+
+struct zeromqData {
+    zmq::context_t context;
+    struct Session {
+        std::string                     router;
+        std::shared_ptr<zmq::socket_t>  socket;
+        boost::asio::streambuf          buffer;
+    };
+    std::unordered_map<std::string, std::shared_ptr<Session>>   session_list;
+};
+
+#define ZEROMQ_DATA                USER_ENVIRONMENT_DATA + 2
+#define ZeromqData(environment)    static_cast<zeromqData*>(GetEnvironmentData(environment, ZEROMQ_DATA))
+
+void _zeromq_make_session(Environment*environment, std::shared_ptr<zmq::socket_t>socket, const char*ROUTER)
+{
+    auto session = std::make_shared<zeromqData::Session>();
+    session->router = ROUTER;
+    session->socket = socket;
+    ZeromqData(environment)->session_list[ROUTER] = session;
+    
+    /* prepare router for network */{
+        auto RouterQueryFunction = [](Environment *environment, const char *logicalName, void *context) {
+            auto session = static_cast<zeromqData::Session*>(context);
+            return logicalName == session->router;
+        };
+        auto RouterWriteFunction = [](Environment *environment, const char *logicalName, const char *str, void *context){
+            auto session = static_cast<zeromqData::Session*>(context);
+            try {
+                
+                session->socket->send(zmq::const_buffer(str, std::strlen(str)), zmq::send_flags::dontwait);
+                
+                DeactivateRouter(environment, session->router.c_str());
+                WriteString(environment, STDOUT, str);
+                ActivateRouter(environment, session->router.c_str());
+                
+            } catch (std::exception&e) {
+                Writeln(environment, e.what());
+            }
+        };
+        auto RouterReadFunction = [](Environment *environment,const char *logicalName,void *context)->int {
+            auto session = static_cast<zeromqData::Session*>(context);
+            try {
+                
+                if (0 == session->buffer.size()) {
+                    zmq::message_t message;
+                    if (auto n = session->socket->recv(message); *n >0 ) {
+                        std::ostream os(&session->buffer);
+                        os.write(static_cast<char*>(message.data()), *n);
+                    }
+                }
+                
+            } catch (std::exception&e) {
+                Writeln(environment, e.what());
+            }
+            std::istream is(&session->buffer);
+            return is.get();
+        };
+        auto RouterUnreadFunction =[](Environment *environment,const char *logicalName,int inchar,void *context)->int {
+            auto session = static_cast<zeromqData::Session*>(context);
+
+            std::istream is(&session->buffer);
+            is.putback(inchar);
+            
+            return static_cast<int>(true);
+        };
+        
+        AddRouter(environment, ROUTER, 40,
+                  /* RouterQueryFunction  * */RouterQueryFunction,
+                  /* RouterWriteFunction  * */RouterWriteFunction,
+                  /* RouterReadFunction   * */RouterReadFunction,
+                  /* RouterUnreadFunction * */RouterUnreadFunction,
+                  /* RouterExitFunction   * */nullptr,
+                  /* void                 * */session.get());
+    }
+}
+
+zmq::socket_type _zeromq_socket_type_from_string(const char*SOCKET_TYPE)
+{
+    zmq::socket_type socket_type;
+    
+    /* */if (0 == std::strcmp(SOCKET_TYPE, "req"   )) return zmq::socket_type::req;
+    else if (0 == std::strcmp(SOCKET_TYPE, "rep"   )) return zmq::socket_type::rep;
+    else if (0 == std::strcmp(SOCKET_TYPE, "dealer")) return zmq::socket_type::dealer;
+    else if (0 == std::strcmp(SOCKET_TYPE, "router")) return zmq::socket_type::router;
+    else if (0 == std::strcmp(SOCKET_TYPE, "pub"   )) return zmq::socket_type::pub;
+    else if (0 == std::strcmp(SOCKET_TYPE, "sub"   )) return zmq::socket_type::sub;
+    else if (0 == std::strcmp(SOCKET_TYPE, "xpub"  )) return zmq::socket_type::xpub;
+    else if (0 == std::strcmp(SOCKET_TYPE, "xsub"  )) return zmq::socket_type::xsub;
+    else if (0 == std::strcmp(SOCKET_TYPE, "push"  )) return zmq::socket_type::push;
+    else if (0 == std::strcmp(SOCKET_TYPE, "pull"  )) return zmq::socket_type::pull;
+        
+#if defined(ZMQ_BUILD_DRAFT_API) && ZMQ_VERSION >= ZMQ_MAKE_VERSION(4, 2, 0)
+    else if (0 == std::strcmp(SOCKET_TYPE, "server")) return zmq::socket_type::server;
+    else if (0 == std::strcmp(SOCKET_TYPE, "client")) return zmq::socket_type::client;
+    else if (0 == std::strcmp(SOCKET_TYPE, "radio" )) return zmq::socket_type::radio;
+    else if (0 == std::strcmp(SOCKET_TYPE, "dish"  )) return zmq::socket_type::dish;
+#endif
+    
+#if ZMQ_VERSION_MAJOR >= 4
+    else if (0 == std::strcmp(SOCKET_TYPE, "stream")) return zmq::socket_type::stream;
+#endif
+    
+    else if (0 == std::strcmp(SOCKET_TYPE, "pair")) return zmq::socket_type::pull;
+    
+    else {
+        throw std::invalid_argument(SOCKET_TYPE);
+    }
+    
+    return socket_type;
+}
+void zeromq_bind(Environment*environment, const char* ROUTER, const char* ADDRESS, const char* SOCKET_TYPE)
+{
+    try {
+        
+        zmq::socket_type socket_type = _zeromq_socket_type_from_string(SOCKET_TYPE);
+        auto socket = std::make_shared<zmq::socket_t>(ZeromqData(environment)->context, socket_type);
+        
+        _zeromq_make_session(environment, socket, ROUTER);
+        
+        socket->bind(ADDRESS);
+        
+    } catch (std::exception& e) {
+        std::cerr << e.what() << std::endl;
+    }
+}
+
+void zeromq_connect(Environment*environment, const char* ROUTER, const char* ADDRESS, const char* SOCKET_TYPE)
+{
+    try {
+        
+        zmq::socket_type socket_type = _zeromq_socket_type_from_string(SOCKET_TYPE);
+        auto socket = std::make_shared<zmq::socket_t>(ZeromqData(environment)->context, socket_type);
+        
+        _zeromq_make_session(environment, socket, ROUTER);
+        
+        socket->connect(ADDRESS);
+        
+    } catch (std::exception& e) {
+        std::cerr << e.what() << std::endl;
+    }
+}
+
+void zeromq_initialize(Environment*environment)
+{
+    if (nullptr == ZeromqData(environment)) {
+        AllocateEnvironmentData(environment, ZEROMQ_DATA, sizeof(zeromqData), [](Environment*environment){
+            ZeromqData(environment)->~zeromqData();
+        });
+        new (ZeromqData(environment)) zeromqData();
+    }
+    
+    clips::user_function<__LINE__>(environment, "zmq-bind",    zeromq_bind);
+    clips::user_function<__LINE__>(environment, "zmq-connect", zeromq_connect);
+}
+
+}// namespace clips::extension {
+#endif// CLIPS_EXTENSION_ZEROMQ_ENABLED
