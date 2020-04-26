@@ -45,6 +45,8 @@ namespace clips {
     using instance_name     = std::tuple<std::string, std::integral_constant<char,'n'>>;
     //using external_address  = std::tuple<void*,       std::integral_constant<char,'e'>>;
     using multifield        = std::vector<std::any>;
+//    inline std::ostream&operator<<(std::ostream&os, const string&x) { return os << std::get<0>(x); }
+//    inline std::ostream&operator<<(std::ostream&os, const symbol&x) { return os << std::get<0>(x); }
     // ////////////////////////////////////////////////////////////////////////////////////////
     template<typename>struct type_code      {enum{value='*'};};// * Any Type
     template<>struct type_code<bool>        {enum{value='b'};};// b Boolean
@@ -147,14 +149,23 @@ namespace clips {
     template<typename R, typename ... Args>struct build_arguments_code;
     template<typename R, typename A1, typename ... Args>
     struct build_arguments_code<R, A1, Args...> {
-        static const char* apply(char code[], unsigned i) {
-            code[i+0] = ';';
-            code[i+1] = argument_code<A1>::value;
-            return build_arguments_code<R,Args...>::apply(code, i+2);
+        static const std::string& apply(std::string&code, unsigned long i) {
+            if (i <= 1) { code = "*"; }
+            std::string currentCode = ";";
+            if constexpr(std::is_same_v<const char*, A1> || std::is_same_v<char*, A1> ||
+                         std::is_same_v<std::string, std::remove_reference_t<std::remove_cv_t<A1>>>) {
+                currentCode += argument_code<clips::string>::value;
+                currentCode += argument_code<clips::symbol>::value;
+            } else {
+                currentCode += argument_code<A1>::value;
+            }
+            return build_arguments_code<R,Args...>::apply(code+=currentCode, i+std::size(currentCode));
         }
     };
     template<typename R>struct build_arguments_code<R> {
-        static const char* apply(char code[], unsigned i) { code[i]='\0'; return code; }
+        static const std::string& apply(std::string&code, unsigned long i) {
+            return code;
+        }
     };
  
     namespace __private{
@@ -249,7 +260,7 @@ namespace clips {
     template<unsigned i, typename R, typename...Args>
     void user_function(Environment*CLIPS, const char*name, std::function<R(Args...)>lambda, void*context=nullptr) {
         using namespace __private;
-        char argumentsCode[(1+n<>::max_value)*2] = {'*', '\0'};
+        std::string argumentsCode = "*";
         build_arguments_code<R, Args...>::apply(argumentsCode, 1);
         char returnCode[2] = {return_code<R>::value, '\0'};
         using UDF = is_void_return<i,R,Args...>;
@@ -260,7 +271,7 @@ namespace clips {
                /* const char *              returnTypes = */returnCode,
                /* unsigned short                minArgs = */sizeof...(Args),
                /* unsigned short                maxArgs = */sizeof...(Args),
-               /* const char *            argumentTypes = */argumentsCode,
+               /* const char *            argumentTypes = */argumentsCode.c_str(),
                /* UserDefinedFunction *cFunctionPointer = */UDF::f,
                /* const char *            cFunctionName = */name,
                /* void *                        context = */context);
@@ -269,7 +280,7 @@ namespace clips {
     template<unsigned i, typename R, typename...Args>
     void user_function(Environment*CLIPS, const char*name, std::function<R(Environment*, Args...)>lambda, void*context=nullptr) {
         using namespace __private;
-        char argumentsCode[(1+n<>::max_value)*2] = {'*', '\0'};
+        std::string argumentsCode = "*";
         build_arguments_code<R, Args...>::apply(argumentsCode, 1);// 参数数量和上面的不一样
         char returnCode[2] = {return_code<R>::value, '\0'};
         using UDF = is_void_return<i, R, Environment*, Args...>; // 这里也和上面不一样
@@ -280,7 +291,7 @@ namespace clips {
                /* const char *              returnTypes = */returnCode,
                /* unsigned short                minArgs = */sizeof...(Args),
                /* unsigned short                maxArgs = */sizeof...(Args),
-               /* const char *            argumentTypes = */argumentsCode,
+               /* const char *            argumentTypes = */argumentsCode.c_str(),
                /* UserDefinedFunction *cFunctionPointer = */UDF::f,
                /* const char *            cFunctionName = */name,
                /* void *                        context = */context);
@@ -299,7 +310,8 @@ namespace clips {
     class CLIPS {
         std::shared_ptr<Environment> env;
     public:
-        explicit CLIPS(Environment*environment=nullptr) {
+        CLIPS():CLIPS(nullptr) {}
+        explicit CLIPS(Environment*environment) {
             if (nullptr == environment) {
                 this->env = std::shared_ptr<Environment>(CreateEnvironment(), [](Environment*x){
                     DestroyEnvironment(x);
@@ -360,11 +372,20 @@ namespace clips {
     };
 }//namespace clips
 
+#ifndef CLIPS_EXTENSION_TEST_BENCH_ENABLED
+#   define CLIPS_EXTENSION_TEST_BENCH_ENABLED 1
+#endif//CLIPS_EXTENSION_TEST_BENCH_ENABLED
+
 #ifndef CLIPS_EXTENSION_SOCKET_ENABLED
 #   define CLIPS_EXTENSION_SOCKET_ENABLED 1
 #endif//CLIPS_EXTENSION_SOCKET_ENABLED
 
 namespace clips::extension {
+
+#if CLIPS_EXTENSION_TEST_BENCH_ENABLED
+    void test_bench_initialize(Environment*environment);
+    void test_bench_execute();
+#endif//CLIPS_EXTENSION_TEST_BENCH_ENABLED
 
 #if CLIPS_EXTENSION_SOCKET_ENABLED
     void socket_initialize(Environment*environment);
@@ -372,62 +393,4 @@ namespace clips::extension {
 
 }// namespace clips::extension {
 
-#if CLIPS_HPP_TEST_WITH_CATCH_ENABLED
-#include <catch2/catch.hpp>
-TEST_CASE("expert system CLIPS hello world", "[CLIPS][ExpertSystem]") {
-    clips::CLIPS CLIPS;
-    REQUIRE(1 +2+3 == std::any_cast<clips::integer>(CLIPS.eval("(+ 1  2 3)")));
-    REQUIRE(1.+2+3 == std::any_cast<clips::real   >(CLIPS.eval("(+ 1. 2 3)")));
-    
-    REQUIRE(clips::string{"2019-10-10"} == std::any_cast<clips::string>(CLIPS.eval("(str-cat 2019 - 10 - 10)")));
-    REQUIRE(clips::symbol{"2019-10-10"} == std::any_cast<clips::symbol>(CLIPS.eval("(sym-cat 2019 - 10 - 10)")));
-}
 
-TEST_CASE("expert system CLIPS user defined function", "[CLIPS][ExpertSystem]") {
-    clips::CLIPS CLIPS;
-    SECTION("test build arguments code") {
-        using namespace std::string_literals;
-        char argumentsCode[128] = {'*', '\0'};
-        REQUIRE("*;v"s == clips::build_arguments_code<void,         void>::apply(argumentsCode, 1));
-        REQUIRE("*;b"s == clips::build_arguments_code<void,         bool>::apply(argumentsCode, 1));
-        REQUIRE("*;l"s == clips::build_arguments_code<void,         char>::apply(argumentsCode, 1));
-        REQUIRE("*;l"s == clips::build_arguments_code<void,        short>::apply(argumentsCode, 1));
-        REQUIRE("*;l"s == clips::build_arguments_code<void,          int>::apply(argumentsCode, 1));
-        REQUIRE("*;l"s == clips::build_arguments_code<void,         long>::apply(argumentsCode, 1));
-        REQUIRE("*;l"s == clips::build_arguments_code<void,    long long>::apply(argumentsCode, 1));
-        REQUIRE("*;d"s == clips::build_arguments_code<void,        float>::apply(argumentsCode, 1));
-        REQUIRE("*;d"s == clips::build_arguments_code<void,       double>::apply(argumentsCode, 1));
-        REQUIRE("*;d"s == clips::build_arguments_code<void,  long double>::apply(argumentsCode, 1));
-        
-        REQUIRE("*;s"s == clips::build_arguments_code<void,        char*>::apply(argumentsCode, 1));
-        REQUIRE("*;s"s == clips::build_arguments_code<void,  const char*>::apply(argumentsCode, 1));
-        REQUIRE("*;e"s == clips::build_arguments_code<void,        void*>::apply(argumentsCode, 1));
-        REQUIRE("*;e"s == clips::build_arguments_code<void, std::string*>::apply(argumentsCode, 1));
-        
-        REQUIRE("*;b"s == clips::build_arguments_code<void,       clips::boolean>::apply(argumentsCode, 1));
-        REQUIRE("*;s"s == clips::build_arguments_code<void,        clips::string>::apply(argumentsCode, 1));
-        REQUIRE("*;y"s == clips::build_arguments_code<void,        clips::symbol>::apply(argumentsCode, 1));
-        REQUIRE("*;n"s == clips::build_arguments_code<void, clips::instance_name>::apply(argumentsCode, 1));
-        
-#define TEST_ARGUMENTS bool, int, float, const char*, std::string, clips::string, clips::boolean, clips::symbol, clips::instance_name
-        clips::user_function<__LINE__>(CLIPS, "test", static_cast<void(*)(TEST_ARGUMENTS)>([](TEST_ARGUMENTS){ }));
-        REQUIRE("*;b;l;d;s;s;s;b;y;n"s == clips::build_arguments_code<void, TEST_ARGUMENTS>::apply(argumentsCode, 1));
-#undef  TEST_ARGUMENTS
-    }
-    
-    clips::user_function<__LINE__>(CLIPS, "hello", static_cast<clips::string(*)()>([]{ return clips::string{"hello"}; }));
-    clips::user_function<__LINE__>(CLIPS, "world", static_cast<clips::string(*)()>([]{ return clips::string{"world"}; }));
-    
-    REQUIRE(clips::string{"hello"} == std::any_cast<clips::string>(CLIPS.eval("(hello)")));
-    REQUIRE(clips::string{"world"} == std::any_cast<clips::string>(CLIPS.eval("(world)")));
-    REQUIRE(clips::string{"helloworld"} == std::any_cast<clips::string>(CLIPS.eval("(str-cat (hello) (world))")));
-    
-    
-    clips::user_function<__LINE__>(CLIPS, "good", static_cast<clips::string(*)(Environment*)>([](Environment*){ return clips::string{"good"}; }));
-    clips::user_function<__LINE__>(CLIPS, "luck", static_cast<clips::string(*)(Environment*)>([](Environment*){ return clips::string{"luck"}; }));
-    
-    REQUIRE(clips::string{"good"} == std::any_cast<clips::string>(CLIPS.eval("(good)")));
-    REQUIRE(clips::string{"luck"} == std::any_cast<clips::string>(CLIPS.eval("(luck)")));
-    REQUIRE(clips::string{"goodluck"} == std::any_cast<clips::string>(CLIPS.eval("(str-cat (good) (luck))")));
-}
-#endif//CLIPS_HPP_TEST_WITH_CATCH_ENABLED

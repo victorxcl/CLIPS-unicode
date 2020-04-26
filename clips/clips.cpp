@@ -9,13 +9,100 @@
 #include "clips.h"
 #include "clips.hpp"
 
-void UserFunctions(Environment *env)
+void UserFunctions(Environment *environment)
 {
+#if CLIPS_EXTENSION_TEST_BENCH_ENABLED
+    clips::extension::test_bench_initialize(environment);
+#endif//CLIPS_EXTENSION_TEST_BENCH_ENABLED
+    
 #if CLIPS_EXTENSION_SOCKET_ENABLED
-    clips::extension::socket_initialize(env);
+    clips::extension::socket_initialize(environment);
 #endif//CLIPS_EXTENSION_SOCKET_ENABLED
     
 }
+
+#if CLIPS_EXTENSION_TEST_BENCH_ENABLED
+
+template<char code> std::ostream&
+operator<<(std::ostream&os, const std::tuple<std::string, std::integral_constant<char, code>>&x)
+{
+    return os << std::get<0>(x);
+}
+
+#include <boost/core/lightweight_test.hpp>
+
+namespace clips::extension {
+
+void test_bench_initialize(Environment*environment)
+{
+    clips::user_function<__LINE__>(environment, "test-bench-execute", test_bench_execute);
+}
+
+void test_bench_execute()
+{
+    {
+        clips::CLIPS CLIPS;
+        BOOST_TEST_EQ(1 +2+3, std::any_cast<clips::integer>(CLIPS.eval("(+ 1  2 3)")));
+        BOOST_TEST_EQ(1.+2+3, std::any_cast<clips::real   >(CLIPS.eval("(+ 1. 2 3)")));
+        
+        BOOST_TEST_EQ(clips::string{"2019-10-10"}, std::any_cast<clips::string>(CLIPS.eval("(str-cat 2019 - 10 - 10)")));
+        BOOST_TEST_EQ(clips::symbol{"2019-10-10"}, std::any_cast<clips::symbol>(CLIPS.eval("(sym-cat 2019 - 10 - 10)")));
+    }
+    
+    {
+        clips::CLIPS CLIPS;
+        {
+            using namespace std::string_literals;
+            //char argumentsCode[128] = {'*', '\0'};
+            std::string argumentsCode = "*";
+            BOOST_TEST_EQ("*;v"s, (clips::build_arguments_code<void,         void>::apply(argumentsCode, 1)));
+            BOOST_TEST_EQ("*;b"s, (clips::build_arguments_code<void,         bool>::apply(argumentsCode, 1)));
+            BOOST_TEST_EQ("*;l"s, (clips::build_arguments_code<void,         char>::apply(argumentsCode, 1)));
+            BOOST_TEST_EQ("*;l"s, (clips::build_arguments_code<void,        short>::apply(argumentsCode, 1)));
+            BOOST_TEST_EQ("*;l"s, (clips::build_arguments_code<void,          int>::apply(argumentsCode, 1)));
+            BOOST_TEST_EQ("*;l"s, (clips::build_arguments_code<void,         long>::apply(argumentsCode, 1)));
+            BOOST_TEST_EQ("*;l"s, (clips::build_arguments_code<void,    long long>::apply(argumentsCode, 1)));
+            BOOST_TEST_EQ("*;d"s, (clips::build_arguments_code<void,        float>::apply(argumentsCode, 1)));
+            BOOST_TEST_EQ("*;d"s, (clips::build_arguments_code<void,       double>::apply(argumentsCode, 1)));
+            BOOST_TEST_EQ("*;d"s, (clips::build_arguments_code<void,  long double>::apply(argumentsCode, 1)));
+            
+            BOOST_TEST_EQ("*;sy"s, (clips::build_arguments_code<void,        char*>::apply(argumentsCode, 1)));
+            BOOST_TEST_EQ("*;sy"s, (clips::build_arguments_code<void,  const char*>::apply(argumentsCode, 1)));
+            BOOST_TEST_EQ("*;e"s, (clips::build_arguments_code<void,        void*>::apply(argumentsCode, 1)));
+            BOOST_TEST_EQ("*;e"s, (clips::build_arguments_code<void, std::string*>::apply(argumentsCode, 1)));
+            
+            BOOST_TEST_EQ("*;b"s, (clips::build_arguments_code<void,       clips::boolean>::apply(argumentsCode, 1)));
+            BOOST_TEST_EQ("*;s"s, (clips::build_arguments_code<void,        clips::string>::apply(argumentsCode, 1)));
+            BOOST_TEST_EQ("*;y"s, (clips::build_arguments_code<void,        clips::symbol>::apply(argumentsCode, 1)));
+            BOOST_TEST_EQ("*;n"s, (clips::build_arguments_code<void, clips::instance_name>::apply(argumentsCode, 1)));
+            
+#define TEST_ARGUMENTS bool, int, float, const char*, std::string, clips::string, clips::boolean, clips::symbol, clips::instance_name
+            clips::user_function<__LINE__>(CLIPS, "test", static_cast<void(*)(TEST_ARGUMENTS)>([](TEST_ARGUMENTS){ }));
+            BOOST_TEST_EQ("*;b;l;d;sy;sy;s;b;y;n"s, (clips::build_arguments_code<void, TEST_ARGUMENTS>::apply(argumentsCode, 1)));
+#undef  TEST_ARGUMENTS
+        }
+        
+        clips::user_function<__LINE__>(CLIPS, "hello", static_cast<clips::string(*)()>([]{ return clips::string{"hello"}; }));
+        clips::user_function<__LINE__>(CLIPS, "world", static_cast<clips::string(*)()>([]{ return clips::string{"world"}; }));
+        
+        BOOST_TEST_EQ(clips::string{"hello"}, std::any_cast<clips::string>(CLIPS.eval("(hello)")));
+        BOOST_TEST_EQ(clips::string{"world"}, std::any_cast<clips::string>(CLIPS.eval("(world)")));
+        BOOST_TEST_EQ(clips::string{"helloworld"}, std::any_cast<clips::string>(CLIPS.eval("(str-cat (hello) (world))")));
+        
+        
+        clips::user_function<__LINE__>(CLIPS, "good", static_cast<clips::string(*)(Environment*)>([](Environment*){ return clips::string{"good"}; }));
+        clips::user_function<__LINE__>(CLIPS, "luck", static_cast<clips::string(*)(Environment*)>([](Environment*){ return clips::string{"luck"}; }));
+        
+        BOOST_TEST_EQ(clips::string{"good"}, std::any_cast<clips::string>(CLIPS.eval("(good)")));
+        BOOST_TEST_EQ(clips::string{"luck"}, std::any_cast<clips::string>(CLIPS.eval("(luck)")));
+        BOOST_TEST_EQ(clips::string{"goodluck"}, std::any_cast<clips::string>(CLIPS.eval("(str-cat (good) (luck))")));
+    }
+    boost::report_errors();
+}
+
+} // clips::extension
+
+#endif//CLIPS_EXTENSION_TEST_BENCH_ENABLED
 
 #if CLIPS_EXTENSION_SOCKET_ENABLED && 1
 #include <boost/asio.hpp>
@@ -124,13 +211,13 @@ void socket_connect(Environment*environment, const char*ROUTER, const char* HOST
 
     try {
         auto&io_context = SocketData(environment)->io_context;
-
-        auto&resolver = SocketData(environment)->resolver;
+        auto&  resolver = SocketData(environment)->resolver;
+        
         tcp::resolver::results_type endpoints = resolver->resolve(HOST, PORT);
 
         auto socket = std::make_shared<tcp::socket>(io_context);
         boost::asio::connect(*socket, endpoints);
-
+        
         _socket_make_session(environment, socket, ROUTER);
 
     } catch (std::exception& e) {
