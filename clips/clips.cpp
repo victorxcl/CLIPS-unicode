@@ -15,6 +15,10 @@ void UserFunctions(Environment *environment)
     clips::extension::test_bench_initialize(environment);
 #endif//CLIPS_EXTENSION_TEST_BENCH_ENABLED
     
+#if CLIPS_EXTENSION_UTILITY_ENABLED
+    clips::extension::utility_initialize(environment);
+#endif//CLIPS_EXTENSION_UTILITY_ENABLED
+    
 #if CLIPS_EXTENSION_SOCKET_ENABLED
     clips::extension::socket_initialize(environment);
 #endif//CLIPS_EXTENSION_SOCKET_ENABLED
@@ -147,6 +151,26 @@ void test_bench_execute()
 } // clips::extension
 
 #endif//CLIPS_EXTENSION_TEST_BENCH_ENABLED
+
+#if CLIPS_EXTENSION_UTILITY_ENABLED
+namespace clips::extension {
+
+clips::string utility_readcommand(Environment*environment, const char*logicalName)
+{
+    std::string command;
+    while(!CompleteCommand(command.c_str())) {
+        command += ReadRouter(environment, logicalName);
+    }
+    return clips::string{command};
+}
+
+void utility_initialize(Environment*environment)
+{
+    clips::user_function<__LINE__>(environment, "readcommand", utility_readcommand);
+}
+
+}// namespace clips::extension {
+#endif//CLIPS_EXTENSION_UTILITY_ENABLED
 
 #if CLIPS_EXTENSION_SOCKET_ENABLED
 #include <boost/asio.hpp>

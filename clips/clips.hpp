@@ -379,6 +379,10 @@ namespace clips {
 #   define CLIPS_EXTENSION_TEST_BENCH_ENABLED 1
 #endif//CLIPS_EXTENSION_TEST_BENCH_ENABLED
 
+#ifndef CLIPS_EXTENSION_UTILITY_ENABLED
+#   define CLIPS_EXTENSION_UTILITY_ENABLED 1
+#endif//CLIPS_EXTENSION_UTILITY_ENABLED
+
 #ifndef CLIPS_EXTENSION_SOCKET_ENABLED
 #   define CLIPS_EXTENSION_SOCKET_ENABLED 1
 #endif//CLIPS_EXTENSION_SOCKET_ENABLED
@@ -397,6 +401,10 @@ namespace clips::extension {
     void test_bench_initialize(Environment*environment);
     void test_bench_execute();
 #endif//CLIPS_EXTENSION_TEST_BENCH_ENABLED
+
+#if CLIPS_EXTENSION_UTILITY_ENABLED
+    void utility_initialize(Environment*environment);
+#endif//CLIPS_EXTENSION_UTILITY_ENABLED
 
 #if CLIPS_EXTENSION_SOCKET_ENABLED
     void socket_initialize(Environment*environment);
