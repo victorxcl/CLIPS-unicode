@@ -301,7 +301,8 @@ struct zeromqData {
     struct Session {
         std::string                     router;
         std::shared_ptr<zmq::socket_t>  socket;
-        boost::asio::streambuf          buffer;
+        boost::asio::streambuf          buffer_recv;
+        boost::asio::streambuf          buffer_send;
     };
     std::unordered_map<std::string, std::shared_ptr<Session>>   session_list;
 };
@@ -324,9 +325,11 @@ void _zeromq_make_session(Environment*environment, std::shared_ptr<zmq::socket_t
         auto RouterWriteFunction = [](Environment *environment, const char *logicalName, const char *str, void *context){
             auto session = static_cast<zeromqData::Session*>(context);
             try {
-                
-                session->socket->send(zmq::const_buffer(str, std::strlen(str)), zmq::send_flags::dontwait);
-                
+                std::ostream os(&session->buffer_send);
+                os.write(str, std::strlen(str));
+                if (auto command=boost::asio::buffer_cast<const char*>(session->buffer_send.data()); CompleteCommand(command)) {
+                    session->socket->send(zmq::const_buffer(command, std::strlen(command)), zmq::send_flags::dontwait);
+                }
                 DeactivateRouter(environment, session->router.c_str());
                 WriteString(environment, STDOUT, str);
                 ActivateRouter(environment, session->router.c_str());
@@ -339,10 +342,10 @@ void _zeromq_make_session(Environment*environment, std::shared_ptr<zmq::socket_t
             auto session = static_cast<zeromqData::Session*>(context);
             try {
                 
-                if (0 == session->buffer.size()) {
+                if (0 == session->buffer_recv.size()) {
                     zmq::message_t message;
                     if (auto n = session->socket->recv(message); *n >0 ) {
-                        std::ostream os(&session->buffer);
+                        std::ostream os(&session->buffer_recv);
                         os.write(static_cast<char*>(message.data()), *n);
                     }
                 }
@@ -350,13 +353,13 @@ void _zeromq_make_session(Environment*environment, std::shared_ptr<zmq::socket_t
             } catch (std::exception&e) {
                 Writeln(environment, e.what());
             }
-            std::istream is(&session->buffer);
+            std::istream is(&session->buffer_recv);
             return is.get();
         };
         auto RouterUnreadFunction =[](Environment *environment,const char *logicalName,int inchar,void *context)->int {
             auto session = static_cast<zeromqData::Session*>(context);
 
-            std::istream is(&session->buffer);
+            std::istream is(&session->buffer_recv);
             is.putback(inchar);
             
             return static_cast<int>(true);
