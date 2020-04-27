@@ -22,6 +22,10 @@ void UserFunctions(Environment *environment)
 #if CLIPS_EXTENSION_ZEROMQ_ENABLED
     clips::extension::zeromq_initialize(environment);
 #endif//CLIPS_EXTENSION_ZEROMQ_ENABLED
+
+#if CLIPS_EXTENSION_MUSTACHE_ENABLED
+    clips::extension::mustache_initialize(environment);
+#endif//CLIPS_EXTENSION_MUSTACHE_ENABLED
     
 }
 
@@ -101,6 +105,42 @@ void test_bench_execute()
         BOOST_TEST_EQ(clips::string{"luck"}, std::any_cast<clips::string>(CLIPS.eval("(luck)")));
         BOOST_TEST_EQ(clips::string{"goodluck"}, std::any_cast<clips::string>(CLIPS.eval("(str-cat (good) (luck))")));
     }
+#if CLIPS_EXTENSION_MUSTACHE_ENABLED
+    {
+        {
+            std::string origin = u8R"(
+            Hello
+            World
+            Happy
+            )";
+            std::string expected =
+            "Hello\n"
+            "World\n"
+            "Happy";
+            
+            BOOST_TEST_EQ(clips::string{expected}, mustache_trim(origin.c_str()));
+        }
+        clips::CLIPS CLIPS;
+        std::string view{"{{#names}}Hi {{name}}!\n{{/names}}"};
+        std::string context {
+            u8R"=========(
+            {
+                "names":[
+                    { "name": "Chris" },
+                    { "name": "Mark" },
+                    { "name": "Scott" }
+                ]
+            }
+            )========="
+        };
+        
+        const char*expected =
+        "Hi Chris!\n"
+        "Hi Mark!\n"
+        "Hi Scott!\n";
+        BOOST_TEST_EQ(clips::string{expected}, mustache_render(CLIPS, view.c_str(), context.c_str()));
+    }
+#endif//CLIPS_EXTENSION_MUSTACHE_ENABLED
     boost::report_errors();
 }
 
@@ -413,3 +453,93 @@ void zeromq_initialize(Environment*environment)
 
 }// namespace clips::extension {
 #endif// CLIPS_EXTENSION_ZEROMQ_ENABLED
+
+#if CLIPS_EXTENSION_MUSTACHE_ENABLED
+
+#include <mstch/mstch.hpp>
+#include <nlohmann/json.hpp>
+#include <boost/algorithm/string.hpp>
+
+namespace clips::extension {
+
+mstch::node mstch_node_from_json(const nlohmann::json&json)
+{
+    /**/   if (json.is_null()) {
+        return nullptr;
+    } else if (json.is_number_float()) {
+        return static_cast<double>(json.get<nlohmann::json::number_float_t>());
+    } else if (json.is_number_integer()) {
+        return static_cast<int>(json.get<nlohmann::json::number_integer_t>());
+    } else if (json.is_number_unsigned()) {
+        return static_cast<int>(json.get<nlohmann::json::number_unsigned_t>());
+    } else if (json.is_boolean()) {
+        return static_cast<bool>(json.get<nlohmann::json::boolean_t>());
+    } else if (json.is_string()) {
+        return json.get<nlohmann::json::string_t>();
+    } else if (json.is_object()) {
+        mstch::map map;
+        for (auto& [key, val] : json.items()) {
+            map[key] = mstch_node_from_json(val);
+        }
+        return map;
+    } else if (json.is_array()) {
+        mstch::array array;
+        for (auto& [key, val] : json.items()) {
+            array.push_back(mstch_node_from_json(val));
+        }
+        return array;
+    }
+    
+    return nullptr;
+}
+
+void trim_prefix(std::string&Input)
+{
+    if (Input.empty())
+        return;
+    
+    std::vector<std::string> v; // #2: Search for tokens
+    boost::trim_right(Input);
+    boost::split(v, Input, boost::is_any_of("\n"), boost::token_compress_on);
+    
+    if (v.empty())
+        return;
+    if (1 == v.size())
+        return;
+    
+    v.erase(std::remove_if(std::begin(v), std::end(v), [](auto x){ return x.empty(); }), std::end(v));
+    if (v.size() >= 2) {
+        auto n = std::size(v[0]) - std::size(boost::trim_left_copy(v[0]));
+        std::for_each(std::begin(v), std::end(v), [n](auto&&x){ boost::erase_head(x, static_cast<int>(n)); });
+    }
+    Input = boost::join(v, "\n");
+}
+
+clips::string mustache_trim(const char* input)
+{
+    std::string tmp(input);
+    trim_prefix(tmp);
+    return clips::string{tmp};
+}
+
+clips::string mustache_render(Environment*environment, const char* view, const char* context)
+{
+    try {
+        auto json = nlohmann::json::parse(context);
+        mstch::node root = mstch_node_from_json(json);
+        auto map = boost::get<mstch::map>(root);
+        return clips::string{mstch::render(view, root)};
+    } catch (std::exception&e) {
+        Writeln(environment, e.what());
+    }
+    return clips::string{""};
+}
+
+void mustache_initialize(Environment*environment)
+{
+    clips::user_function<__LINE__>(environment, "mustache-trim",    mustache_trim);
+    clips::user_function<__LINE__>(environment, "mustache-render",  mustache_render);
+}
+
+}// namespace clips::extension {
+#endif// CLIPS_EXTENSION_MUSTACHE_ENABLED

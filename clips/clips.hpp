@@ -387,6 +387,10 @@ namespace clips {
 #   define CLIPS_EXTENSION_ZEROMQ_ENABLED 1
 #endif//CLIPS_EXTENSION_ZEROMQ_ENABLED
 
+#ifndef CLIPS_EXTENSION_MUSTACHE_ENABLED
+#   define CLIPS_EXTENSION_MUSTACHE_ENABLED 1
+#endif//CLIPS_EXTENSION_MUSTACHE_ENABLED
+
 namespace clips::extension {
 
 #if CLIPS_EXTENSION_TEST_BENCH_ENABLED
@@ -401,6 +405,12 @@ namespace clips::extension {
 #if CLIPS_EXTENSION_ZEROMQ_ENABLED
     void zeromq_initialize(Environment*environment);
 #endif// CLIPS_EXTENSION_ZEROMQ_ENABLED
+
+#if CLIPS_EXTENSION_MUSTACHE_ENABLED
+    void          mustache_initialize(Environment*environment);
+    clips::string mustache_trim(const char*input);
+    clips::string mustache_render(Environment*environment, const char*view, const char*context);
+#endif// CLIPS_EXTENSION_MUSTACHE_ENABLED
 
 }// namespace clips::extension {
 
