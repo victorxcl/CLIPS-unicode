@@ -155,7 +155,7 @@ void test_bench_execute()
 #if CLIPS_EXTENSION_UTILITY_ENABLED
 namespace clips::extension {
 
-clips::string utility_readcommand(Environment*environment, const char*logicalName)
+clips::string utility_read_command(Environment*environment, const char*logicalName)
 {
     std::string command;
     while(!CompleteCommand(command.c_str())) {
@@ -166,7 +166,7 @@ clips::string utility_readcommand(Environment*environment, const char*logicalNam
 
 void utility_initialize(Environment*environment)
 {
-    clips::user_function<__LINE__>(environment, "readcommand", utility_readcommand);
+    clips::user_function<__LINE__>(environment, "read-command", utility_read_command);
 }
 
 }// namespace clips::extension {
