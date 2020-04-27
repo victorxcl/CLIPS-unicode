@@ -196,15 +196,16 @@ void _socket_make_session(Environment*environment, std::shared_ptr<tcp::socket>s
         };
         auto RouterReadFunction = [](Environment *environment,const char *logicalName,void *context)->int {
             auto session = static_cast<socketData::Session*>(context);
-        
-            auto&buffer = session->buffer;
             
-            if (0 == buffer.size()) {
+            if (0 == session->buffer.size()) {
                 boost::system::error_code ignored_error;
-                boost::asio::read_until(*session->socket, buffer, '\n', ignored_error);
+                auto rule = [session](auto&&err, std::size_t bytes_transferred)->bool{
+                    return !!err || CompleteCommand(boost::asio::buffer_cast<const char*>(session->buffer.data()));
+                };
+                boost::asio::read(*session->socket, session->buffer, rule, ignored_error);
             }
             
-            std::istream is(&buffer);
+            std::istream is(&session->buffer);
             return is.get();
         };
         auto RouterUnreadFunction =[](Environment *environment,const char *logicalName,int inchar,void *context)->int {
