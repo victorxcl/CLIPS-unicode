@@ -185,7 +185,11 @@ void test_benchmark()
 #endif//CLIPS_EXTENSION_TEST_BENCH_ENABLED
 
 #if CLIPS_EXTENSION_UTILITY_ENABLED
+#include <boost/asio.hpp>
+#include <boost/process.hpp>
 #include <nlohmann/json.hpp>
+#include <future>
+
 namespace clips::extension {
 
 clips::string utility_read_clips(Environment*environment, const char*logicalName)
@@ -206,10 +210,28 @@ clips::string utility_read_json(Environment*environment, const char*logicalName)
     return clips::string{json};
 }
 
+clips::string utility_read_system(Environment*environment, const char* shellCommand)
+{
+    std::future<std::string> data;
+    
+    boost::asio::io_context io_context;
+    
+    boost::process::child c(std::string{shellCommand},
+                            //boost::process::std_in.close(),
+                            boost::process::std_out > data,
+                            //boost::process::std_err > boost::process::null,
+                            io_context);
+    
+    io_context.run(); //this will actually block until the compiler is finished
+    
+    return clips::string{data.get()};
+}
+
 void utility_initialize(Environment*environment)
 {
-    clips::user_function<__LINE__>(environment, "read-clips", utility_read_clips);
-    clips::user_function<__LINE__>(environment, "read-json",  utility_read_json);
+    clips::user_function<__LINE__>(environment, "read-clips",  utility_read_clips);
+    clips::user_function<__LINE__>(environment, "read-json",   utility_read_json);
+    clips::user_function<__LINE__>(environment, "read-system", utility_read_system);
 }
 
 }// namespace clips::extension {
