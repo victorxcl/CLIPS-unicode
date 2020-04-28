@@ -131,7 +131,7 @@
 /***************************************/
 
 #if ! RUN_TIME
-   static int                     DoString(const char *,int,bool *);
+   static int                     DoString(const char *,int,bool *,int delimiterChar);
    static int                     DoComment(const char *,int);
    static int                     DoWhiteSpace(const char *,int);
    static void                    DefaultGetNextEvent(Environment *);
@@ -447,8 +447,10 @@ int CompleteCommand(
          /* is found, a complete command can not be made.        */
          /*======================================================*/
 
+         case '`' :
+         case '\'' :
          case '"' :
-           i = DoString(mstring,i,&complete);
+           i = DoString(mstring,i,&complete, inchar);
            if ((depth == 0) && complete) moreThanZero = true;
            break;
 
@@ -539,7 +541,8 @@ int CompleteCommand(
 static int DoString(
   const char *str,
   int pos,
-  bool *complete)
+  bool *complete,
+  int delimiterChar)
   {
    int inchar;
 
@@ -549,7 +552,7 @@ static int DoString(
    /*=================================================*/
 
    inchar = str[pos];
-   while (inchar  != '"')
+   while (inchar  != delimiterChar)
      {
       /*=====================================================*/
       /* If a \ is found, then the next character is ignored */
