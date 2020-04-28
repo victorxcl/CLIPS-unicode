@@ -12,7 +12,7 @@
 void UserFunctions(Environment *environment)
 {
 #if CLIPS_EXTENSION_TEST_BENCH_ENABLED
-    clips::extension::test_bench_initialize(environment);
+    clips::extension::test_benchmark_initialize(environment);
 #endif//CLIPS_EXTENSION_TEST_BENCH_ENABLED
     
 #if CLIPS_EXTENSION_UTILITY_ENABLED
@@ -45,12 +45,12 @@ operator<<(std::ostream&os, const std::tuple<std::string, std::integral_constant
 
 namespace clips::extension {
 
-void test_bench_initialize(Environment*environment)
+void test_benchmark_initialize(Environment*environment)
 {
-    clips::user_function<__LINE__>(environment, "test-bench-execute", test_bench_execute);
+    clips::user_function<__LINE__>(environment, "test-benchmark", test_benchmark);
 }
 
-void test_bench_execute()
+void test_benchmark()
 {
     {
         clips::CLIPS CLIPS;
@@ -124,25 +124,57 @@ void test_bench_execute()
             
             BOOST_TEST_EQ(clips::string{expected}, mustache_trim(origin.c_str()));
         }
-        clips::CLIPS CLIPS;
-        std::string view{"{{#names}}Hi {{name}}!\n{{/names}}"};
-        std::string context {
-            u8R"=========(
-            {
-                "names":[
-                    { "name": "Chris" },
-                    { "name": "Mark" },
-                    { "name": "Scott" }
-                ]
-            }
-            )========="
-        };
+        {
+            clips::CLIPS CLIPS;
+            std::string view{"{{#names}}Hi {{name}}!\n{{/names}}"};
+            std::string context {
+                u8R"=========(
+                {
+                    "names":[
+                        { "name": "Chris" },
+                        { "name": "Mark" },
+                        { "name": "Scott" }
+                    ]
+                }
+                )========="
+            };
+            
+            const char*expected =
+            "Hi Chris!\n"
+            "Hi Mark!\n"
+            "Hi Scott!\n";
+            BOOST_TEST_EQ(clips::string{expected}, mustache_render(CLIPS, view.c_str(), context.c_str()));
+        }
+        {
+            clips::CLIPS CLIPS;
+            std::string view{"{{#names}}Hi {{> user}}!\n{{/names}}"};
+            std::string partials{
+                u8R"=========(
+                {
+                    "user":"<strong>{{name}}</strong>"
+                }
+                )========="
+            };
+            std::string context {
+                u8R"=========(
+                {
+                    "names":[
+                        { "name": "Chris" },
+                        { "name": "Mark" },
+                        { "name": "Scott" }
+                    ]
+                }
+                )========="
+            };
+            
+            const char*expected =
+            "Hi <strong>Chris</strong>!\n"
+            "Hi <strong>Mark</strong>!\n"
+            "Hi <strong>Scott</strong>!\n"
+            ;
+            BOOST_TEST_EQ(clips::string{expected}, mustache_render_with_partials(CLIPS, view.c_str(), context.c_str(), partials.c_str()));
+        }
         
-        const char*expected =
-        "Hi Chris!\n"
-        "Hi Mark!\n"
-        "Hi Scott!\n";
-        BOOST_TEST_EQ(clips::string{expected}, mustache_render(CLIPS, view.c_str(), context.c_str()));
     }
 #endif//CLIPS_EXTENSION_MUSTACHE_ENABLED
     boost::report_errors();
@@ -639,15 +671,33 @@ clips::string mustache_trim(const char* input)
     return clips::string{tmp};
 }
 
-clips::string mustache_render(Environment*environment, const char* view, const char* context)
+clips::string mustache_render(Environment*environment, const char* VIEW, const char* CONTEXT)
 {
     try {
-        auto json = nlohmann::json::parse(context);
-        mstch::node root = mstch_node_from_json(json);
-        auto map = boost::get<mstch::map>(root);
-        return clips::string{mstch::render(view, root)};
-    } catch (std::exception&e) {
-        Writeln(environment, e.what());
+        mstch::node context = mstch_node_from_json(nlohmann::json::parse(CONTEXT));
+        return clips::string{mstch::render(VIEW, context)};
+    } catch (const std::exception&e) {
+        WriteString(environment, STDERR, e.what());
+        WriteString(environment, STDERR, "\n");
+    }
+    return clips::string{""};
+}
+
+clips::string mustache_render_with_partials(Environment*environment, const char* VIEW, const char* CONTEXT, const char*PARTIALS)
+{
+    try {
+        mstch::node context  = mstch_node_from_json(nlohmann::json::parse(CONTEXT));
+        mstch::node partials = mstch_node_from_json(nlohmann::json::parse(PARTIALS));
+        std::map<std::string,std::string> partials_map;
+        
+        for (auto&&[key, node]:boost::get<mstch::map>(partials)) {
+            std::cout << key << ": " << boost::get<std::string>(node) << std::endl;
+            partials_map[key] = boost::get<std::string>(node);
+        }
+        return clips::string{mstch::render(VIEW, context, partials_map)};
+    } catch (const std::exception&e) {
+        WriteString(environment, STDERR, e.what());
+        WriteString(environment, STDERR, "\n");
     }
     return clips::string{""};
 }
@@ -656,6 +706,7 @@ void mustache_initialize(Environment*environment)
 {
     clips::user_function<__LINE__>(environment, "mustache-trim",    mustache_trim);
     clips::user_function<__LINE__>(environment, "mustache-render",  mustache_render);
+    clips::user_function<__LINE__>(environment, "mustache-render-with-partials",  mustache_render_with_partials);
 }
 
 }// namespace clips::extension {

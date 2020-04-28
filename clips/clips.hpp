@@ -398,8 +398,8 @@ namespace clips {
 namespace clips::extension {
 
 #if CLIPS_EXTENSION_TEST_BENCH_ENABLED
-    void test_bench_initialize(Environment*environment);
-    void test_bench_execute();
+    void test_benchmark_initialize(Environment*environment);
+    void test_benchmark();
 #endif//CLIPS_EXTENSION_TEST_BENCH_ENABLED
 
 #if CLIPS_EXTENSION_UTILITY_ENABLED
@@ -417,7 +417,8 @@ namespace clips::extension {
 #if CLIPS_EXTENSION_MUSTACHE_ENABLED
     void          mustache_initialize(Environment*environment);
     clips::string mustache_trim(const char*input);
-    clips::string mustache_render(Environment*environment, const char*view, const char*context);
+    clips::string mustache_render(Environment*environment, const char*VIEW, const char*CONTEXT);
+    clips::string mustache_render_with_partials(Environment*environment, const char* VIEW, const char* CONTEXT, const char*PARTIALS);
 #endif// CLIPS_EXTENSION_MUSTACHE_ENABLED
 
 }// namespace clips::extension {
