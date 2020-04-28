@@ -691,7 +691,6 @@ clips::string mustache_render_with_partials(Environment*environment, const char*
         std::map<std::string,std::string> partials_map;
         
         for (auto&&[key, node]:boost::get<mstch::map>(partials)) {
-            std::cout << key << ": " << boost::get<std::string>(node) << std::endl;
             partials_map[key] = boost::get<std::string>(node);
         }
         return clips::string{mstch::render(VIEW, context, partials_map)};
