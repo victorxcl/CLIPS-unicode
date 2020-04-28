@@ -214,7 +214,7 @@ clips::string utility_read_json(Environment*environment, const char*logicalName)
     return clips::string{json};
 }
 
-clips::string utility_read_system(Environment*environment, const char* shellCommand)
+clips::string utility_system_output(Environment*environment, const char* shellCommand)
 {
     std::future<std::string> data;
     
@@ -233,9 +233,9 @@ clips::string utility_read_system(Environment*environment, const char* shellComm
 
 void utility_initialize(Environment*environment)
 {
-    clips::user_function<__LINE__>(environment, "read-clips",  utility_read_clips);
-    clips::user_function<__LINE__>(environment, "read-json",   utility_read_json);
-    clips::user_function<__LINE__>(environment, "read-system", utility_read_system);
+    clips::user_function<__LINE__>(environment, "read-clips",    utility_read_clips);
+    clips::user_function<__LINE__>(environment, "read-json",     utility_read_json);
+    clips::user_function<__LINE__>(environment, "system-output", utility_system_output);
 }
 
 }// namespace clips::extension {
