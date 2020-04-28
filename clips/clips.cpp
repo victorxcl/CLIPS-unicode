@@ -9,6 +9,10 @@
 #include "clips.h"
 #include "clips.hpp"
 
+#ifdef system // defined in usrsetup.h for iOS
+#   undef system // but here use boost::process::system instead
+#endif
+
 void UserFunctions(Environment *environment)
 {
 #if CLIPS_EXTENSION_TEST_BENCH_ENABLED
