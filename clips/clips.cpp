@@ -450,10 +450,16 @@ void _zeromq_make_session(Environment*environment, std::shared_ptr<zmq::socket_t
             auto session = static_cast<zeromqData::Session*>(context);
             try {
                 std::ostream os(&session->buffer_send);
-                os.write(str, std::strlen(str));
-                if (auto command=boost::asio::buffer_cast<const char*>(session->buffer_send.data()); CompleteCommand(command)) {
+                os << str << std::flush;
+                
+                auto command = boost::asio::buffer_cast<const char*>(session->buffer_send.data());
+                
+                /*  */ if (zeromqData::Session::Protocol::CLIPS == session->protocol && CompleteCommand(command)) {
+                    session->socket->send(zmq::const_buffer(command, std::strlen(command)), zmq::send_flags::dontwait);
+                } else if (zeromqData::Session::Protocol::JSON == session->protocol && nlohmann::json::accept(command)) {
                     session->socket->send(zmq::const_buffer(command, std::strlen(command)), zmq::send_flags::dontwait);
                 }
+                
                 DeactivateRouter(environment, session->router.c_str());
                 WriteString(environment, STDOUT, str);
                 ActivateRouter(environment, session->router.c_str());
