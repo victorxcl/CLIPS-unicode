@@ -237,6 +237,7 @@ void test_benchmark()
 #if CLIPS_EXTENSION_UTILITY_ENABLED
 #include <nlohmann/json.hpp>
 #include <future>
+#include <boost/algorithm/string.hpp>
 
 namespace clips::extension {
 
@@ -258,10 +259,20 @@ clips::string utility_read_json(Environment*environment, const char*logicalName)
     return clips::string{json};
 }
 
+clips::string utility_read_until(Environment*environment, const char*logicalName, const char*MATCH)
+{
+    std::string buffer;
+    while(!boost::ends_with(buffer, MATCH)) {
+        buffer += ReadRouter(environment, logicalName);
+    }
+    return clips::string{buffer.substr(0, buffer.length()-std::strlen(MATCH))};
+}
+
 void utility_initialize(Environment*environment)
 {
     clips::user_function<__LINE__>(environment, "read-clips", utility_read_clips);
     clips::user_function<__LINE__>(environment, "read-json",  utility_read_json);
+    clips::user_function<__LINE__>(environment, "read-until",  utility_read_until);
 }
 
 }// namespace clips::extension {
