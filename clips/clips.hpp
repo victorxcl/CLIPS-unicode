@@ -39,7 +39,7 @@ namespace clips {
     
     using integer           = long long;
     using real              = double;
-    using boolean           = std::tuple<std::string, std::integral_constant<char,'b'>>;
+    using boolean           = std::tuple<bool,        std::integral_constant<char,'b'>>;
     using string            = std::tuple<std::string, std::integral_constant<char,'s'>>;
     using symbol            = std::tuple<std::string, std::integral_constant<char,'y'>>;
     using instance_name     = std::tuple<std::string, std::integral_constant<char,'n'>>;
@@ -140,7 +140,7 @@ namespace clips {
 /**/            udfv->value = CreateValue/*(CLIPS, x)*/;        \
 /**/        }                                                   \
 /**/    };/* CLIPS_SELECT_ACTION */
-    CLIPS_CREATE_PRIMITIVE_VALUE('b', CreateBoolean/*    */(CLIPS,std::get<0>(x).c_str()))
+    CLIPS_CREATE_PRIMITIVE_VALUE('b', CreateBoolean/*    */(CLIPS,std::get<0>(x)        ))
     CLIPS_CREATE_PRIMITIVE_VALUE('s', CreateString/*     */(CLIPS,std::get<0>(x).c_str()))
     CLIPS_CREATE_PRIMITIVE_VALUE('y', CreateSymbol/*     */(CLIPS,std::get<0>(x).c_str()))
     CLIPS_CREATE_PRIMITIVE_VALUE('n', CreateInstanceName   (CLIPS,std::get<0>(x).c_str()))
@@ -395,6 +395,10 @@ namespace clips {
 #   define CLIPS_EXTENSION_MUSTACHE_ENABLED 1
 #endif//CLIPS_EXTENSION_MUSTACHE_ENABLED
 
+#ifndef CLIPS_EXTENSION_PROCESS_ENABLED
+#   define CLIPS_EXTENSION_PROCESS_ENABLED 1
+#endif//CLIPS_EXTENSION_PROCESS_ENABLED
+
 namespace clips::extension {
 
 #if CLIPS_EXTENSION_TEST_BENCH_ENABLED
@@ -420,6 +424,10 @@ namespace clips::extension {
     clips::string mustache_render(Environment*environment, const char*VIEW, const char*CONTEXT);
     clips::string mustache_render_with_partials(Environment*environment, const char* VIEW, const char* CONTEXT, const char*PARTIALS);
 #endif// CLIPS_EXTENSION_MUSTACHE_ENABLED
+
+#if CLIPS_EXTENSION_PROCESS_ENABLED
+    void process_initialize(Environment*environment);
+#endif// CLIPS_EXTENSION_PROCESS_ENABLED
 
 }// namespace clips::extension {
 

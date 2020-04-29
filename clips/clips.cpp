@@ -35,6 +35,10 @@ void UserFunctions(Environment *environment)
     clips::extension::mustache_initialize(environment);
 #endif//CLIPS_EXTENSION_MUSTACHE_ENABLED
     
+#if CLIPS_EXTENSION_PROCESS_ENABLED
+    clips::extension::process_initialize(environment);
+#endif//CLIPS_EXTENSION_PROCESS_ENABLED
+    
 }
 
 #if CLIPS_EXTENSION_TEST_BENCH_ENABLED
@@ -189,8 +193,6 @@ void test_benchmark()
 #endif//CLIPS_EXTENSION_TEST_BENCH_ENABLED
 
 #if CLIPS_EXTENSION_UTILITY_ENABLED
-#include <boost/asio.hpp>
-#include <boost/process.hpp>
 #include <nlohmann/json.hpp>
 #include <future>
 
@@ -214,28 +216,10 @@ clips::string utility_read_json(Environment*environment, const char*logicalName)
     return clips::string{json};
 }
 
-clips::string utility_system_output(Environment*environment, const char* shellCommand)
-{
-    std::future<std::string> data;
-    
-    boost::asio::io_context io_context;
-    
-    boost::process::child c(std::string{shellCommand},
-                            //boost::process::std_in.close(),
-                            boost::process::std_out > data,
-                            //boost::process::std_err > boost::process::null,
-                            io_context);
-    
-    io_context.run(); //this will actually block until the compiler is finished
-    
-    return clips::string{data.get()};
-}
-
 void utility_initialize(Environment*environment)
 {
-    clips::user_function<__LINE__>(environment, "read-clips",    utility_read_clips);
-    clips::user_function<__LINE__>(environment, "read-json",     utility_read_json);
-    clips::user_function<__LINE__>(environment, "system-output", utility_system_output);
+    clips::user_function<__LINE__>(environment, "read-clips", utility_read_clips);
+    clips::user_function<__LINE__>(environment, "read-json",  utility_read_json);
 }
 
 }// namespace clips::extension {
@@ -736,3 +720,133 @@ void mustache_initialize(Environment*environment)
 
 }// namespace clips::extension {
 #endif// CLIPS_EXTENSION_MUSTACHE_ENABLED
+
+
+#if CLIPS_EXTENSION_PROCESS_ENABLED
+
+#include <boost/asio.hpp>
+#include <boost/process.hpp>
+
+namespace clips::extension {
+
+struct processData {
+    struct Terminal {
+        std::string                 router;
+        
+        boost::process::opstream    in;
+        boost::process::ipstream    out;
+        std::shared_ptr<boost::process::child> child;
+    };
+    std::unordered_map<std::string, std::shared_ptr<Terminal>>   terminal_list;
+};
+
+#define PROCESS_DATA                USER_ENVIRONMENT_DATA + 3
+#define ProcessData(environment)    static_cast<processData*>(GetEnvironmentData(environment, PROCESS_DATA))
+
+void _process_make_terminal(Environment*environment, const char*ROUTER)
+{
+    auto terminal = std::make_shared<processData::Terminal>();
+    terminal->router = ROUTER;
+    ProcessData(environment)->terminal_list[ROUTER] = terminal;
+    
+    /* prepare router for terminal */{
+        auto RouterQueryFunction = [](Environment *environment, const char *logicalName, void *context) {
+            auto terminal = static_cast<processData::Terminal*>(context);
+            return logicalName == terminal->router;
+        };
+        auto RouterWriteFunction = [](Environment *environment, const char *logicalName, const char *str, void *context){
+            auto terminal = static_cast<processData::Terminal*>(context);
+            try {
+                terminal->in << str << std::flush;
+                DeactivateRouter(environment, terminal->router.c_str());
+                WriteString(environment, STDOUT, str);
+                ActivateRouter(environment, terminal->router.c_str());
+                
+            } catch (std::exception&e) {
+                WriteString(environment, STDERR, e.what());
+                WriteString(environment, STDERR, "\n");
+            }
+        };
+        auto RouterReadFunction = [](Environment *environment,const char *logicalName,void *context)->int {
+            auto terminal = static_cast<processData::Terminal*>(context);
+            return terminal->out.get();
+        };
+        auto RouterUnreadFunction =[](Environment *environment,const char *logicalName,int inchar,void *context)->int {
+            auto terminal = static_cast<processData::Terminal*>(context);
+            terminal->out.putback(inchar);
+            return static_cast<int>(true);
+        };
+        
+        //auto RouterExitFunction = [](Environment *,int,void *){ };
+        
+        AddRouter(environment, ROUTER, 40,
+                  /* RouterQueryFunction  * */RouterQueryFunction,
+                  /* RouterWriteFunction  * */RouterWriteFunction,
+                  /* RouterReadFunction   * */RouterReadFunction,
+                  /* RouterUnreadFunction * */RouterUnreadFunction,
+                  /* RouterExitFunction   * */nullptr,
+                  /* void                 * */terminal.get());
+    }
+}
+
+clips::string process_system_output(Environment*environment, const char* shellCommand)
+{
+    std::future<std::string> data;
+    
+    boost::asio::io_context io_context;
+    auto env = boost::this_process::environment();
+    boost::process::child c(std::string{shellCommand},
+                            //boost::process::std_in.close(),
+                            boost::process::std_out > data,
+                            //boost::process::std_err > boost::process::null,
+                            io_context, env);
+    
+    io_context.run();
+    
+    return clips::string{data.get()};
+}
+
+void process_terminal_start(Environment*environment, const char* ROUTER, const char*SHELL_COMMAND)
+{
+    try {
+        _process_make_terminal(environment, ROUTER);
+        auto terminal = ProcessData(environment)->terminal_list.at(ROUTER);
+        terminal->child = std::make_shared<boost::process::child>(SHELL_COMMAND,
+                                                                  boost::process::std_out > terminal->out,
+                                                                  boost::process::std_in  < terminal->in);
+        
+    } catch (const std::exception& e) {
+        WriteString(environment, STDERR, e.what());
+        WriteString(environment, STDERR, "\n");
+    }
+}
+clips::boolean process_terminal_stop(Environment*environment, const char* ROUTER)
+{
+    try {
+        auto terminal = ProcessData(environment)->terminal_list.at(ROUTER);
+        DeleteRouter(environment, ROUTER);
+        ProcessData(environment)->terminal_list.erase(ROUTER);
+        return clips::boolean{true};
+    } catch (const std::exception& e) {
+        WriteString(environment, STDERR, e.what());
+        WriteString(environment, STDERR, "\n");
+    }
+    return clips::boolean{false};
+}
+
+void process_initialize(Environment*environment)
+{
+    if (nullptr == ProcessData(environment)) {
+        AllocateEnvironmentData(environment, PROCESS_DATA, sizeof(processData), [](Environment*environment){
+            ProcessData(environment)->~processData();
+        });
+        new (ProcessData(environment)) processData();
+    }
+    
+    clips::user_function<__LINE__>(environment, "system-output",  process_system_output);
+    clips::user_function<__LINE__>(environment, "terminal-start", process_terminal_start);
+    clips::user_function<__LINE__>(environment, "terminal-stop",  process_terminal_stop);
+}
+
+}// namespace clips::extension {
+#endif// CLIPS_EXTENSION_PROCESS_ENABLED
