@@ -13,6 +13,14 @@
 #   undef system // but here use boost::process::system instead
 #endif
 
+#ifdef LHS // conflict with uuidgen
+#   undef LHS
+#endif
+
+#ifdef RHS // conflict with uuidgen
+#   undef RHS
+#endif
+
 #define XXX_PEEK_BUFFER(Socket, socket, send)                                               \
 /**/clips::string socket##_peek_##send##_buffer(Environment*environment, const char*ROUTER) \
 /**/{                                                                                       \
@@ -251,9 +259,9 @@ void test_benchmark()
 #include <future>
 #include <algorithm>
 #include <boost/algorithm/string.hpp>
-//#include <boost/uuid/uuid.hpp>
-//#include <boost/uuid/uuid_io.hpp>
-//#include <boost/uuid/uuid_generators.hpp>
+#include <boost/uuid/uuid.hpp>
+#include <boost/uuid/uuid_io.hpp>
+#include <boost/uuid/uuid_generators.hpp>
 
 namespace clips::extension {
 
@@ -344,9 +352,8 @@ clips::integer utility_min_integer(Environment*environment)
 
 clips::symbol utility_uuidgen(Environment*environment)
 {
-//    boost::uuids::uuid uuid = boost::uuids::random_generator()();
-    //return clips::symbol{boost::uuids::to_string(uuid)};
-    return clips::symbol{""};
+    boost::uuids::uuid uuid = boost::uuids::random_generator()();
+    return clips::symbol{boost::uuids::to_string(uuid)};
 }
 
 void utility_sleep_seconds(Environment*environment, clips::integer n)
@@ -375,7 +382,7 @@ void utility_initialize(Environment*environment)
     clips::user_function<__LINE__>(environment, "max-integer", utility_max_integer);
     clips::user_function<__LINE__>(environment, "min-integer", utility_min_integer);
     
-//    clips::user_function<__LINE__>(environment, "uuidgen", utility_uuidgen);
+    clips::user_function<__LINE__>(environment, "uuidgen", utility_uuidgen);
     
     clips::user_function<__LINE__>(environment, "sleep-seconds",      utility_sleep_seconds);
     clips::user_function<__LINE__>(environment, "sleep-milliseconds", utility_sleep_milliseconds);
