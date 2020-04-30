@@ -251,6 +251,9 @@ void test_benchmark()
 #include <future>
 #include <algorithm>
 #include <boost/algorithm/string.hpp>
+//#include <boost/uuid/uuid.hpp>
+//#include <boost/uuid/uuid_io.hpp>
+//#include <boost/uuid/uuid_generators.hpp>
 
 namespace clips::extension {
 
@@ -330,12 +333,55 @@ clips::string utility_expand_and_eval(Environment*environment, const char*CODE)
     return clips::string{""};
 }
 
+clips::integer utility_max_integer(Environment*environment)
+{
+    return std::numeric_limits<clips::integer>::max();
+}
+clips::integer utility_min_integer(Environment*environment)
+{
+    return std::numeric_limits<clips::integer>::min();
+}
+
+clips::symbol utility_uuidgen(Environment*environment)
+{
+//    boost::uuids::uuid uuid = boost::uuids::random_generator()();
+    //return clips::symbol{boost::uuids::to_string(uuid)};
+    return clips::symbol{""};
+}
+
+void utility_sleep_seconds(Environment*environment, clips::integer n)
+{
+    std::this_thread::sleep_for(std::chrono::seconds(n));
+}
+void utility_sleep_milliseconds(Environment*environment, clips::integer n)
+{
+    std::this_thread::sleep_for(std::chrono::milliseconds(n));
+}
+void utility_sleep_microseconds(Environment*environment, clips::integer n)
+{
+    std::this_thread::sleep_for(std::chrono::microseconds(n));
+}
+void utility_sleep_nanoseconds(Environment*environment, clips::integer n)
+{
+    std::this_thread::sleep_for(std::chrono::nanoseconds(n));
+}
 
 void utility_initialize(Environment*environment)
 {
-    clips::user_function<__LINE__>(environment, "read-clips", utility_read_clips);
-    clips::user_function<__LINE__>(environment, "read-json",  utility_read_json);
+    clips::user_function<__LINE__>(environment, "read-clips",  utility_read_clips);
+    clips::user_function<__LINE__>(environment, "read-json",   utility_read_json);
     clips::user_function<__LINE__>(environment, "read-until",  utility_read_until);
+    
+    clips::user_function<__LINE__>(environment, "max-integer", utility_max_integer);
+    clips::user_function<__LINE__>(environment, "min-integer", utility_min_integer);
+    
+//    clips::user_function<__LINE__>(environment, "uuidgen", utility_uuidgen);
+    
+    clips::user_function<__LINE__>(environment, "sleep-seconds",      utility_sleep_seconds);
+    clips::user_function<__LINE__>(environment, "sleep-milliseconds", utility_sleep_milliseconds);
+    clips::user_function<__LINE__>(environment, "sleep-microseconds", utility_sleep_microseconds);
+    clips::user_function<__LINE__>(environment, "sleep-nanoseconds",  utility_sleep_nanoseconds);
+    
     //clips::user_function<__LINE__>(environment, "expand-for-eval", utility_expand_for_eval);
     //clips::user_function<__LINE__>(environment, "expand-and-eval", utility_expand_and_eval);
 }
@@ -819,6 +865,7 @@ void mustache_initialize(Environment*environment)
 
 #include <boost/asio.hpp>
 #include <boost/process.hpp>
+#include <boost/asio/signal_set.hpp>
 
 namespace clips::extension {
 
@@ -884,19 +931,22 @@ void _process_make_terminal(Environment*environment, const char*ROUTER)
 
 clips::string process_system_output(Environment*environment, const char* shellCommand)
 {
-    std::future<std::string> data;
+    std::future<std::string> output, error;
     
-    boost::asio::io_context io_context;
-    auto env = boost::this_process::environment();
-    boost::process::child c(std::string{shellCommand},
-                            //boost::process::std_in.close(),
-                            boost::process::std_out > data,
-                            //boost::process::std_err > boost::process::null,
-                            io_context, env);
+    try {
+        boost::asio::io_context io_context;
+        boost::process::child c(std::string{shellCommand},
+                                //boost::process::std_in.close(),
+                                (boost::process::std_out & boost::process::std_err) > output,
+                                io_context);
+        
+        io_context.run();
+    } catch (const std::exception&e) {
+        WriteString(environment, STDERR, e.what());
+        WriteString(environment, STDERR, "\n");
+    }
     
-    io_context.run();
-    
-    return clips::string{data.get()};
+    return clips::string{output.get()};
 }
 
 void process_terminal_start(Environment*environment, const char* ROUTER, const char*SHELL_COMMAND)
