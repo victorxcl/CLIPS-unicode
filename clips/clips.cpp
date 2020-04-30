@@ -104,6 +104,18 @@ void test_benchmark()
 {
     {
         clips::CLIPS CLIPS;
+        BOOST_TEST_NOT(CompleteCommand("?A"));
+        BOOST_TEST_NOT(CompleteCommand("\n\n\n?A"));
+        BOOST_TEST(    CompleteCommand(      "?A\n\n\n"));
+        BOOST_TEST(    CompleteCommand("\n\n\n?A\n\n\n"));
+        
+        BOOST_TEST_NOT(CompleteCommand("(expand$ ?A)"));
+        BOOST_TEST_NOT(CompleteCommand("\n\n\n(expand$ ?A)"));
+        BOOST_TEST(    CompleteCommand(      "(expand$ ?A)\n\n\n"));
+        BOOST_TEST(    CompleteCommand("\n\n\n(expand$ ?A)\n\n\n"));
+    }
+    {
+        clips::CLIPS CLIPS;
         BOOST_TEST_EQ(1 +2+3, std::any_cast<clips::integer>(CLIPS.eval("(+ 1  2 3)")));
         BOOST_TEST_EQ(1.+2+3, std::any_cast<clips::real   >(CLIPS.eval("(+ 1. 2 3)")));
         
@@ -237,6 +249,7 @@ void test_benchmark()
 #if CLIPS_EXTENSION_UTILITY_ENABLED
 #include <nlohmann/json.hpp>
 #include <future>
+#include <algorithm>
 #include <boost/algorithm/string.hpp>
 
 namespace clips::extension {
@@ -268,11 +281,63 @@ clips::string utility_read_until(Environment*environment, const char*logicalName
     return clips::string{buffer.substr(0, buffer.length()-std::strlen(MATCH))};
 }
 
+clips::string utility_expand_for_eval(Environment*environment, const char*CODE)
+{
+    std::string str1(u8R"===({"abc":",?A","def":",(expand$ ?B)"})===");
+    
+    std::vector<std::string> items;
+    
+    std::string buffer;
+    for (char c: std::string{str1}) {
+        buffer += c;
+        
+        /*  */ if (boost::ends_with(buffer, ",?")) {
+            items.push_back(buffer.substr(0, buffer.length()-2));
+            buffer = "?";
+        } else if (boost::ends_with(buffer, ",(")) {
+            items.push_back(buffer.substr(0, buffer.length()-2));
+            buffer = "(";
+        } else if (boost::starts_with(buffer, "?") && boost::is_any_of("'(`\"\n\t")(c)) {
+            items.push_back(" " + buffer.substr(0, buffer.length()-1) + " ");
+            buffer = buffer.substr(buffer.length()-1);
+        } else if (boost::starts_with(buffer, "(") && CompleteCommand((buffer+"\n").c_str())) {
+            items.push_back(" " + buffer + " ");
+            buffer.clear();
+        }
+    }
+    if (!buffer.empty()) {
+        items.push_back(buffer);
+    }
+    
+    for (auto&&item:items) {
+        std::cout << "item: [" << item << "]" << std::endl;
+    }
+    
+    buffer = "(str-cat `" + boost::join(items, "`") + "`)";
+    std::cout << buffer << std::endl;
+    
+    return clips::string{buffer};
+}
+
+clips::string utility_expand_and_eval(Environment*environment, const char*CODE)
+{
+    auto buffer = utility_expand_for_eval(environment, CODE);
+    CLIPSValue value;
+    EvalError err = Eval(environment, std::get<0>(buffer).c_str(), &value);
+    if (EE_NO_ERROR == err) {
+        return clips::string{value.lexemeValue->contents};
+    }
+    return clips::string{""};
+}
+
+
 void utility_initialize(Environment*environment)
 {
     clips::user_function<__LINE__>(environment, "read-clips", utility_read_clips);
     clips::user_function<__LINE__>(environment, "read-json",  utility_read_json);
     clips::user_function<__LINE__>(environment, "read-until",  utility_read_until);
+    //clips::user_function<__LINE__>(environment, "expand-for-eval", utility_expand_for_eval);
+    //clips::user_function<__LINE__>(environment, "expand-and-eval", utility_expand_and_eval);
 }
 
 }// namespace clips::extension {
