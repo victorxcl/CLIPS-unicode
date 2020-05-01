@@ -406,10 +406,6 @@ void _socket_make_session(Environment*environment, std::shared_ptr<tcp::socket>s
             boost::asio::write(*session->socket,
                                boost::asio::const_buffer(str, std::strlen(str)),
                                ignored_error);
-
-            DeactivateRouter(environment, session->router.c_str());
-            WriteString(environment, STDOUT, str);
-            ActivateRouter(environment, session->router.c_str());
         };
         auto RouterReadFunction = [](Environment *environment,const char *logicalName,void *context)->int {
             auto session = static_cast<socketData::Session*>(context);
@@ -437,7 +433,7 @@ void _socket_make_session(Environment*environment, std::shared_ptr<tcp::socket>s
             return static_cast<int>(true);
         };
         
-        AddRouter(environment, ROUTER, 40,
+        AddRouter(environment, ROUTER, 20,
                   /* RouterQueryFunction  * */RouterQueryFunction,
                   /* RouterWriteFunction  * */RouterWriteFunction,
                   /* RouterReadFunction   * */RouterReadFunction,
@@ -588,10 +584,6 @@ void _zeromq_make_session(Environment*environment, std::shared_ptr<zmq::socket_t
                     session->buffer_send.consume(std::strlen(command));
                 }
                 
-                DeactivateRouter(environment, session->router.c_str());
-                WriteString(environment, STDOUT, str);
-                ActivateRouter(environment, session->router.c_str());
-                
             } catch (std::exception&e) {
                 Writeln(environment, e.what());
             }
@@ -623,7 +615,7 @@ void _zeromq_make_session(Environment*environment, std::shared_ptr<zmq::socket_t
             return static_cast<int>(true);
         };
         
-        AddRouter(environment, ROUTER, 40,
+        AddRouter(environment, ROUTER, 20,
                   /* RouterQueryFunction  * */RouterQueryFunction,
                   /* RouterWriteFunction  * */RouterWriteFunction,
                   /* RouterReadFunction   * */RouterReadFunction,
@@ -914,10 +906,6 @@ void _process_make_terminal(Environment*environment, const char*ROUTER)
             auto terminal = static_cast<processData::Terminal*>(context);
             try {
                 terminal->in << str << std::flush;
-                DeactivateRouter(environment, terminal->router.c_str());
-                WriteString(environment, STDOUT, str);
-                ActivateRouter(environment, terminal->router.c_str());
-                
             } catch (std::exception&e) {
                 WriteString(environment, STDERR, e.what());
                 WriteString(environment, STDERR, "\n");
@@ -935,7 +923,7 @@ void _process_make_terminal(Environment*environment, const char*ROUTER)
         
         //auto RouterExitFunction = [](Environment *,int,void *){ };
         
-        AddRouter(environment, ROUTER, 40,
+        AddRouter(environment, ROUTER, 20,
                   /* RouterQueryFunction  * */RouterQueryFunction,
                   /* RouterWriteFunction  * */RouterWriteFunction,
                   /* RouterReadFunction   * */RouterReadFunction,
