@@ -750,6 +750,11 @@ ZEROMQ_PEEK_BUFFER(recv)
 
 #undef ZEROMQ_PEEK_BUFFER
 
+clips::symbol zeromq_version(Environment*environment)
+{
+    return clips::symbol{std::to_string(ZMQ_VERSION)};
+}
+
 void zeromq_initialize(Environment*environment)
 {
     if (nullptr == ZeromqData(environment)) {
@@ -764,6 +769,7 @@ void zeromq_initialize(Environment*environment)
     clips::user_function<__LINE__>(environment, "zmq-protocol",         zeromq_protocol);
     clips::user_function<__LINE__>(environment, "zmq-peek-send-buffer", zeromq_peek_send_buffer);
     clips::user_function<__LINE__>(environment, "zmq-peek-recv-buffer", zeromq_peek_recv_buffer);
+    clips::user_function<__LINE__>(environment, "zmq-version",          zeromq_version);
 }
 
 }// namespace clips::extension {
