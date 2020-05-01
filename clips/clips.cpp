@@ -546,8 +546,7 @@ struct zeromqData {
         boost::asio::streambuf          buffer_recv;
         boost::asio::streambuf          buffer_send;
         enum class Protocol {
-            CLIPS,
-            JSON
+            RAW, JSON, CLIPS
         } protocol { Protocol::CLIPS };
     };
     std::unordered_map<std::string, std::shared_ptr<Session>>   session_list;
@@ -576,7 +575,10 @@ void _zeromq_make_session(Environment*environment, std::shared_ptr<zmq::socket_t
                 
                 auto command = boost::asio::buffer_cast<const char*>(session->buffer_send.data());
                 
-                /*  */ if (zeromqData::Session::Protocol::CLIPS == session->protocol && CompleteCommand(command)) {
+                /*  */ if (zeromqData::Session::Protocol::RAW == session->protocol) {
+                    session->socket->send(zmq::const_buffer(command, std::strlen(command)), zmq::send_flags::dontwait);
+                    session->buffer_send.consume(std::strlen(command));
+                } else if (zeromqData::Session::Protocol::CLIPS == session->protocol && CompleteCommand(command)) {
                     session->socket->send(zmq::const_buffer(command, std::strlen(command)), zmq::send_flags::dontwait);
                     session->buffer_send.consume(std::strlen(command));
                 } else if (zeromqData::Session::Protocol::JSON == session->protocol && nlohmann::json::accept(command)) {
@@ -584,8 +586,9 @@ void _zeromq_make_session(Environment*environment, std::shared_ptr<zmq::socket_t
                     session->buffer_send.consume(std::strlen(command));
                 }
                 
-            } catch (std::exception&e) {
-                Writeln(environment, e.what());
+            } catch (const std::exception&e) {
+                WriteString(environment, STDERR, e.what());
+                WriteString(environment, STDERR, "\n");
             }
         };
         auto RouterReadFunction = [](Environment *environment,const char *logicalName,void *context)->int {
@@ -600,9 +603,11 @@ void _zeromq_make_session(Environment*environment, std::shared_ptr<zmq::socket_t
                     }
                 }
                 
-            } catch (std::exception&e) {
-                Writeln(environment, e.what());
+            } catch (const std::exception&e) {
+                WriteString(environment, STDERR, e.what());
+                WriteString(environment, STDERR, "\n");
             }
+            
             std::istream is(&session->buffer_recv);
             return is.get();
         };
@@ -705,14 +710,18 @@ clips::symbol zeromq_protocol(Environment*environment, const char*ROUTER, const 
             protocol_last = "clips";
         } else if (zeromqData::Session::Protocol::JSON  == session->protocol) {
             protocol_last = "json";
+        } else if (zeromqData::Session::Protocol::RAW  == session->protocol) {
+            protocol_last = "raw";
         }
                                                                                                         
         /*  */ if (0 == std::strcmp(PROTOCOL, "clips")) {
             session->protocol = zeromqData::Session::Protocol::CLIPS;
         } else if (0 == std::strcmp(PROTOCOL, "json")) {
             session->protocol = zeromqData::Session::Protocol::JSON;
+        } else if (0 == std::strcmp(PROTOCOL, "raw")) {
+            session->protocol = zeromqData::Session::Protocol::RAW;
         } else {
-            throw std::invalid_argument("\nERROR:\n\t zeromq protocol only support: clips, json\n");
+            throw std::invalid_argument("\nERROR:\n\t zeromq protocol only support: clips, json, raw\n");
         }
                                                                                                         
     } catch (const std::exception&e) {
