@@ -21,48 +21,6 @@
 #   undef RHS
 #endif
 
-#define XXX_PEEK_BUFFER(Socket, socket, send)                                               \
-/**/clips::string socket##_peek_##send##_buffer(Environment*environment, const char*ROUTER) \
-/**/{                                                                                       \
-/**/    const char* content = "";                                                           \
-/**/    try{                                                                                \
-/**/        auto session = Socket##Data(environment)->session_list.at(ROUTER);              \
-/**/        content = boost::asio::buffer_cast<const char*>(session->buffer_##send.data()); \
-/**/    } catch (const std::exception&e) {                                                  \
-/**/        WriteString(environment, STDERR, e.what());                                     \
-/**/        WriteString(environment, STDERR, "\n");                                         \
-/**/    }                                                                                   \
-/**/    return clips::string{content};                                                      \
-/**/}                                                                                       \
-
-#define XXX_PROTOCOL(Socket, socket)                                                                        \
-/**/clips::symbol socket##_protocol(Environment*environment, const char*ROUTER, const char*PROTOCOL)        \
-/**/{                                                                                                       \
-/**/    const char*protocol_last = "unknown";                                                               \
-/**/    try {                                                                                               \
-/**/        auto session = Socket##Data(environment)->session_list.at(ROUTER);                              \
-/**/                                                                                                        \
-/**/        /*  */ if (socket##Data::Session::Protocol::CLIPS == session->protocol) {                       \
-/**/            protocol_last = "clips";                                                                    \
-/**/        } else if (socket##Data::Session::Protocol::JSON  == session->protocol) {                       \
-/**/            protocol_last = "json";                                                                     \
-/**/        }                                                                                               \
-/**/                                                                                                        \
-/**/        /*  */ if (0 == std::strcmp(PROTOCOL, "clips")) {                                               \
-/**/            session->protocol = socket##Data::Session::Protocol::CLIPS;                                 \
-/**/        } else if (0 == std::strcmp(PROTOCOL, "json")) {                                                \
-/**/            session->protocol = socket##Data::Session::Protocol::JSON;                                  \
-/**/        } else {                                                                                        \
-/**/            throw std::invalid_argument("\nERROR:\n\t "#socket" protocol only support: clips, json\n"); \
-/**/        }                                                                                               \
-/**/                                                                                                        \
-/**/    } catch (const std::exception&e) {                                                                  \
-/**/        WriteString(environment, STDERR, e.what());                                                     \
-/**/        WriteString(environment, STDERR, "\n");                                                         \
-/**/    }                                                                                                   \
-/**/    return clips::symbol{ protocol_last };                                                              \
-/**/}                                                                                                       \
-
 void UserFunctions(Environment *environment)
 {
 #if CLIPS_EXTENSION_TEST_BENCH_ENABLED
@@ -269,7 +227,10 @@ clips::string utility_read_clips(Environment*environment, const char*logicalName
 {
     std::string clips;
     while(!CompleteCommand(clips.c_str())) {
-        clips += ReadRouter(environment, logicalName);
+        int inchar = ReadRouter(environment, logicalName);
+        if (EOF == inchar)
+            break;
+        clips += inchar;
     }
     return clips::string{clips};
 }
@@ -278,7 +239,10 @@ clips::string utility_read_json(Environment*environment, const char*logicalName)
 {
     std::string json;
     while(!nlohmann::json::accept(json)) {
-        json += ReadRouter(environment, logicalName);
+        int inchar = ReadRouter(environment, logicalName);
+        if (EOF == inchar)
+            break;
+        json += inchar;
     }
     return clips::string{json};
 }
@@ -287,7 +251,10 @@ clips::string utility_read_until(Environment*environment, const char*logicalName
 {
     std::string buffer;
     while(!boost::ends_with(buffer, MATCH)) {
-        buffer += ReadRouter(environment, logicalName);
+        int inchar = ReadRouter(environment, logicalName);
+        if (EOF == inchar)
+            break;
+        buffer += inchar;
     }
     return clips::string{buffer.substr(0, buffer.length()-std::strlen(MATCH))};
 }
@@ -413,9 +380,7 @@ struct socketData {
     struct Session {
         std::string                     router;
         std::shared_ptr<tcp::socket>    socket;
-        boost::asio::streambuf          buffer_send;
         boost::asio::streambuf          buffer_recv;
-        enum class Protocol { CLIPS, JSON } protocol {Protocol::CLIPS};
     };
     std::unordered_map<std::string, std::shared_ptr<Session>>   session_list;
 };
@@ -437,18 +402,10 @@ void _socket_make_session(Environment*environment, std::shared_ptr<tcp::socket>s
         };
         auto RouterWriteFunction = [](Environment *environment, const char *logicalName, const char *str, void *context){
             auto session = static_cast<socketData::Session*>(context);
-            
-            std::ostream os(&session->buffer_send);
-            os << str;
-            
-            auto command = boost::asio::buffer_cast<const char*>(session->buffer_send.data());
-            /*  */ if (socketData::Session::Protocol::CLIPS == session->protocol && CompleteCommand(command)) {
-                boost::system::error_code ignored_error;
-                boost::asio::write(*session->socket, session->buffer_send, ignored_error);
-            } else if (socketData::Session::Protocol::JSON  == session->protocol && nlohmann::json::accept(command)) {
-                boost::system::error_code ignored_error;
-                boost::asio::write(*session->socket, session->buffer_send, ignored_error);
-            }
+            boost::system::error_code ignored_error;
+            boost::asio::write(*session->socket,
+                               boost::asio::const_buffer(str, std::strlen(str)),
+                               ignored_error);
 
             DeactivateRouter(environment, session->router.c_str());
             WriteString(environment, STDOUT, str);
@@ -458,20 +415,13 @@ void _socket_make_session(Environment*environment, std::shared_ptr<tcp::socket>s
             auto session = static_cast<socketData::Session*>(context);
             
             if (0 == session->buffer_recv.size()) {
-                /*  */ if (socketData::Session::Protocol::CLIPS == session->protocol) {
-                    auto rule = [session](auto&&err, std::size_t bytes_transferred)->bool{
-                        auto buffer = boost::asio::buffer_cast<const char*>(session->buffer_recv.data());
-                        return !!err || CompleteCommand(buffer);
-                    };
+                std::size_t bytes_available = session->socket->available();
+                if (bytes_available > 0) {
                     boost::system::error_code ignored_error;
-                    boost::asio::read(*session->socket, session->buffer_recv, rule, ignored_error);
-                } else if (socketData::Session::Protocol::JSON  == session->protocol) {
-                    auto rule = [session](auto&&err, std::size_t bytes_transferred)->bool{
-                        auto buffer = boost::asio::buffer_cast<const char*>(session->buffer_recv.data());
-                        return !!err || nlohmann::json::accept(buffer);
-                    };
-                    boost::system::error_code ignored_error;
-                    boost::asio::read(*session->socket, session->buffer_recv, rule, ignored_error);
+                    boost::asio::read(*session->socket,
+                                      session->buffer_recv,
+                                      boost::asio::transfer_exactly(bytes_available),
+                                      ignored_error);
                 }
             }
             
@@ -542,9 +492,28 @@ void socket_connect(Environment*environment, const char*ROUTER, const char* HOST
     }
 }
 
-XXX_PROTOCOL(Socket, socket)
-XXX_PEEK_BUFFER(Socket, socket, send)
-XXX_PEEK_BUFFER(Socket, socket, recv)
+clips::string socket_peek_available(Environment*environment, const char*ROUTER)
+{
+    const char* content = "";
+    try{
+        auto session = SocketData(environment)->session_list.at(ROUTER);
+        std::size_t bytes_available = session->socket->available();
+        
+        if (bytes_available > 0) {
+            boost::system::error_code ignored_error;
+            boost::asio::read(*session->socket,
+                              session->buffer_recv,
+                              boost::asio::transfer_exactly(bytes_available),
+                              ignored_error);
+        }
+        
+        content = boost::asio::buffer_cast<const char*>(session->buffer_recv.data());
+    } catch (const std::exception&e) {
+        WriteString(environment, STDERR, e.what());
+        WriteString(environment, STDERR, "\n");
+    }
+    return clips::string{content};
+}
 
 void socket_initialize(Environment*environment)
 {
@@ -557,9 +526,7 @@ void socket_initialize(Environment*environment)
 
     clips::user_function<__LINE__>(environment, "socket-accept",            socket_accept);
     clips::user_function<__LINE__>(environment, "socket-connect",           socket_connect);
-    clips::user_function<__LINE__>(environment, "socket-protocol",          socket_protocol);
-    clips::user_function<__LINE__>(environment, "socket-peek-send-buffer",  socket_peek_send_buffer);
-    clips::user_function<__LINE__>(environment, "socket-peek-recv-buffer",  socket_peek_recv_buffer);
+    clips::user_function<__LINE__>(environment, "socket-peek-available",    socket_peek_available);
 }
 
 }// namespace clips::extension {
@@ -736,9 +703,51 @@ void zeromq_connect(Environment*environment, const char* ROUTER, const char* ADD
     }
 }
 
-XXX_PROTOCOL(Zeromq, zeromq)
-XXX_PEEK_BUFFER(Zeromq, zeromq, send)
-XXX_PEEK_BUFFER(Zeromq, zeromq, recv)
+clips::symbol zeromq_protocol(Environment*environment, const char*ROUTER, const char*PROTOCOL)
+{
+    const char*protocol_last = "unknown";
+    try {
+        auto session = ZeromqData(environment)->session_list.at(ROUTER);
+                                                                                                        
+        /*  */ if (zeromqData::Session::Protocol::CLIPS == session->protocol) {
+            protocol_last = "clips";
+        } else if (zeromqData::Session::Protocol::JSON  == session->protocol) {
+            protocol_last = "json";
+        }
+                                                                                                        
+        /*  */ if (0 == std::strcmp(PROTOCOL, "clips")) {
+            session->protocol = zeromqData::Session::Protocol::CLIPS;
+        } else if (0 == std::strcmp(PROTOCOL, "json")) {
+            session->protocol = zeromqData::Session::Protocol::JSON;
+        } else {
+            throw std::invalid_argument("\nERROR:\n\t zeromq protocol only support: clips, json\n");
+        }
+                                                                                                        
+    } catch (const std::exception&e) {
+        WriteString(environment, STDERR, e.what());
+        WriteString(environment, STDERR, "\n");
+    }
+    return clips::symbol{ protocol_last };
+}
+
+#define ZEROMQ_PEEK_BUFFER(send)                                                            \
+/**/clips::string zeromq_peek_##send##_buffer(Environment*environment, const char*ROUTER)   \
+/**/{                                                                                       \
+/**/    const char* content = "";                                                           \
+/**/    try{                                                                                \
+/**/        auto session = ZeromqData(environment)->session_list.at(ROUTER);                \
+/**/        content = boost::asio::buffer_cast<const char*>(session->buffer_##send.data()); \
+/**/    } catch (const std::exception&e) {                                                  \
+/**/        WriteString(environment, STDERR, e.what());                                     \
+/**/        WriteString(environment, STDERR, "\n");                                         \
+/**/    }                                                                                   \
+/**/    return clips::string{content};                                                      \
+/**/}                                                                                       \
+
+ZEROMQ_PEEK_BUFFER(send)
+ZEROMQ_PEEK_BUFFER(recv)
+
+#undef ZEROMQ_PEEK_BUFFER
 
 void zeromq_initialize(Environment*environment)
 {
