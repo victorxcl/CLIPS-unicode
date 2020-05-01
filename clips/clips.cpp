@@ -381,6 +381,7 @@ struct socketData {
         std::string                     router;
         std::shared_ptr<tcp::socket>    socket;
         boost::asio::streambuf          buffer_recv;
+        bool                            block_reading{false};
     };
     std::unordered_map<std::string, std::shared_ptr<Session>>   session_list;
 };
@@ -411,7 +412,13 @@ void _socket_make_session(Environment*environment, std::shared_ptr<tcp::socket>s
             auto session = static_cast<socketData::Session*>(context);
             
             if (0 == session->buffer_recv.size()) {
+                
                 std::size_t bytes_available = session->socket->available();
+                
+                 if (0 == bytes_available && session->block_reading) {
+                    bytes_available = 1;
+                }
+                
                 if (bytes_available > 0) {
                     boost::system::error_code ignored_error;
                     boost::asio::read(*session->socket,
@@ -511,6 +518,20 @@ clips::string socket_peek_available(Environment*environment, const char*ROUTER)
     return clips::string{content};
 }
 
+clips::boolean socket_block_reading(Environment*environment, const char*ROUTER, bool block_reading)
+{
+    bool last_block_reading{false};
+    try{
+        auto session = SocketData(environment)->session_list.at(ROUTER);
+        last_block_reading = session->block_reading;
+        session->block_reading = block_reading;
+    } catch (const std::exception&e) {
+        WriteString(environment, STDERR, e.what());
+        WriteString(environment, STDERR, "\n");
+    }
+    return clips::boolean{last_block_reading};
+}
+
 void socket_initialize(Environment*environment)
 {
     if (nullptr == SocketData(environment)) {
@@ -520,9 +541,10 @@ void socket_initialize(Environment*environment)
         new (SocketData(environment)) socketData();
     }
 
-    clips::user_function<__LINE__>(environment, "socket-accept",            socket_accept);
-    clips::user_function<__LINE__>(environment, "socket-connect",           socket_connect);
-    clips::user_function<__LINE__>(environment, "socket-peek-available",    socket_peek_available);
+    clips::user_function<__LINE__>(environment, "socket-accept",         socket_accept);
+    clips::user_function<__LINE__>(environment, "socket-connect",        socket_connect);
+    clips::user_function<__LINE__>(environment, "socket-peek-available", socket_peek_available);
+    clips::user_function<__LINE__>(environment, "socket-block-reading",  socket_block_reading);
 }
 
 }// namespace clips::extension {
