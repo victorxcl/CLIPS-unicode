@@ -43,7 +43,7 @@ namespace clips {
     using string            = std::tuple<std::string, std::integral_constant<char,'s'>>;
     using symbol            = std::tuple<std::string, std::integral_constant<char,'y'>>;
     using instance_name     = std::tuple<std::string, std::integral_constant<char,'n'>>;
-    //using external_address  = std::tuple<void*,       std::integral_constant<char,'e'>>;
+    using external_address  = std::tuple<void*,       std::integral_constant<char,'e'>>;
     using multifield        = std::vector<std::any>;
 //    inline std::ostream&operator<<(std::ostream&os, const string&x) { return os << std::get<0>(x); }
 //    inline std::ostream&operator<<(std::ostream&os, const symbol&x) { return os << std::get<0>(x); }
@@ -67,17 +67,18 @@ namespace clips {
     template<>struct type_code<unsigned long>      {enum{value='l', expect_bits=INTEGER_BIT};};// l Long Long Integer
     template<>struct type_code<unsigned long long> {enum{value='l', expect_bits=INTEGER_BIT};};// l Long Long Integer
 
-    template<>struct type_code<      char*>   {enum{value='s', expect_bits=STRING_BIT|SYMBOL_BIT};};// s String, y Symbol
-    template<>struct type_code<const char*>   {enum{value='s', expect_bits=STRING_BIT|SYMBOL_BIT};};// s String, y Symbol
-    template<>struct type_code<std::string>   {enum{value='s', expect_bits=STRING_BIT|SYMBOL_BIT};};// s String, y Symbol
-    template<>struct type_code<string>        {enum{value='s', expect_bits=STRING_BIT           };};// s String
-    template<>struct type_code<symbol>        {enum{value='y', expect_bits=SYMBOL_BIT           };};// y Symbol
-    template<>struct type_code<instance_name> {enum{value='n', expect_bits=INSTANCE_NAME_BIT    };};// n Instance Name
-    template<>struct type_code<void>          {enum{value='v', expect_bits=VOID_BIT             };};// v Void—No Return Value
-  //template<>struct type_code<double>        {enum{value='f', expect_bits=VOID_BIT             };};// f Fact Address
-  //template<>struct type_code<short>         {enum{value='i', expect_bits=VOID_BIT             };};// i Instance Address
-    template<>struct type_code<multifield>    {enum{value='m', expect_bits=MULTIFIELD_BIT       };};// m Multifield
-    template<typename T>struct type_code<T*>  {enum{value='e', expect_bits=EXTERNAL_ADDRESS_BIT};};// e External Address
+    template<>struct type_code<      char*>        {enum{value='s', expect_bits=STRING_BIT|SYMBOL_BIT};};// s String, y Symbol
+    template<>struct type_code<const char*>        {enum{value='s', expect_bits=STRING_BIT|SYMBOL_BIT};};// s String, y Symbol
+    template<>struct type_code<std::string>        {enum{value='s', expect_bits=STRING_BIT|SYMBOL_BIT};};// s String, y Symbol
+    template<>struct type_code<string>             {enum{value='s', expect_bits=STRING_BIT           };};// s String
+    template<>struct type_code<symbol>             {enum{value='y', expect_bits=SYMBOL_BIT           };};// y Symbol
+    template<>struct type_code<instance_name>      {enum{value='n', expect_bits=INSTANCE_NAME_BIT    };};// n Instance Name
+    template<>struct type_code<void>               {enum{value='v', expect_bits=VOID_BIT             };};// v Void—No Return Value
+  //template<>struct type_code<double>             {enum{value='f', expect_bits=VOID_BIT             };};// f Fact Address
+  //template<>struct type_code<short>              {enum{value='i', expect_bits=VOID_BIT             };};// i Instance Address
+    template<>struct type_code<multifield>         {enum{value='m', expect_bits=MULTIFIELD_BIT       };};// m Multifield
+    template<>struct type_code<external_address>   {enum{value='e', expect_bits=EXTERNAL_ADDRESS_BIT };};// e External Address
+    template<typename T>struct type_code<T*>       {enum{value='e', expect_bits=EXTERNAL_ADDRESS_BIT };};// e External Address
 
     template<typename T>struct type_code<const T>{ enum{
         value=type_code<T>::value,
@@ -122,7 +123,7 @@ namespace clips {
     CLIPS_ARGUMENT_TEMPLATE(     instance_name, instance_name{udfv.lexemeValue->contents})
         
     template<class T>struct argument<T*> {
-        CLIPS_ARGUMENT_VALUE(T*, udfv.externalAddressValue->contents);
+        CLIPS_ARGUMENT_VALUE(T*, static_cast<T*>(udfv.externalAddressValue->contents));
     };
     template<class T>struct argument<const T> {
         static const T value(UDFContext *udfc, unsigned i){
@@ -140,13 +141,13 @@ namespace clips {
 /**/            udfv->value = CreateValue/*(CLIPS, x)*/;        \
 /**/        }                                                   \
 /**/    };/* CLIPS_SELECT_ACTION */
-    CLIPS_CREATE_PRIMITIVE_VALUE('b', CreateBoolean/*    */(CLIPS,std::get<0>(x)        ))
-    CLIPS_CREATE_PRIMITIVE_VALUE('s', CreateString/*     */(CLIPS,std::get<0>(x).c_str()))
-    CLIPS_CREATE_PRIMITIVE_VALUE('y', CreateSymbol/*     */(CLIPS,std::get<0>(x).c_str()))
-    CLIPS_CREATE_PRIMITIVE_VALUE('n', CreateInstanceName   (CLIPS,std::get<0>(x).c_str()))
-    CLIPS_CREATE_PRIMITIVE_VALUE('d', CreateFloat/*      */(CLIPS,x))
-    CLIPS_CREATE_PRIMITIVE_VALUE('l', CreateInteger/*    */(CLIPS,x))
-    CLIPS_CREATE_PRIMITIVE_VALUE('e', CreateExternalAddress(CLIPS,x))
+    CLIPS_CREATE_PRIMITIVE_VALUE('b', CreateBoolean/*     */(CLIPS,std::get<0>(x)/*    */))
+    CLIPS_CREATE_PRIMITIVE_VALUE('s', CreateString/*      */(CLIPS,std::get<0>(x).c_str()))
+    CLIPS_CREATE_PRIMITIVE_VALUE('y', CreateSymbol/*      */(CLIPS,std::get<0>(x).c_str()))
+    CLIPS_CREATE_PRIMITIVE_VALUE('n', CreateInstanceName/**/(CLIPS,std::get<0>(x).c_str()))
+    CLIPS_CREATE_PRIMITIVE_VALUE('d', CreateFloat/*       */(CLIPS,x))
+    CLIPS_CREATE_PRIMITIVE_VALUE('l', CreateInteger/*     */(CLIPS,x))
+    CLIPS_CREATE_PRIMITIVE_VALUE('e', CreateCExternalAddress(CLIPS,std::get<0>(x)/*    */))
 #undef CLIPS_CREATE_PRIMITIVE_VALUE
     
     template<typename R, typename ... Args>struct build_arguments_code;
