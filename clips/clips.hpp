@@ -351,25 +351,29 @@ namespace clips {
         inline std::any eval(const char*script) {
             std::any ret;
             CLIPSValue value;
-            EvalError ok = Eval(env.get(), script, &value);
-            assert(EE_NO_ERROR == ok);
-            if (INTEGER_TYPE == value.header->type) {
-                ret = value.integerValue->contents;
-            }
-            if (FLOAT_TYPE == value.header->type) {
-                ret = value.floatValue->contents;
-            }
-            if (SYMBOL_TYPE == value.header->type) {
-                ret = clips::symbol{value.lexemeValue->contents};
-            }
-            if (STRING_TYPE == value.header->type) {
-                ret = clips::string{value.lexemeValue->contents};
-            }
-            if (INSTANCE_NAME_TYPE == value.header->type) {
-                ret = clips::instance_name{value.lexemeValue->contents};
-            }
-            if (EXTERNAL_ADDRESS_TYPE == value.header->type) {
-                ret = value.externalAddressValue->contents;
+            if (EE_NO_ERROR != Eval(env.get(), script, &value)) {
+                WriteString(*this, STDERR, "[ERROR] eval script: \n");
+                WriteString(*this, STDERR, script);
+                WriteString(*this, STDERR, "\n");
+            } else {
+                if (INTEGER_TYPE == value.header->type) {
+                    ret = value.integerValue->contents;
+                }
+                if (FLOAT_TYPE == value.header->type) {
+                    ret = value.floatValue->contents;
+                }
+                if (SYMBOL_TYPE == value.header->type) {
+                    ret = clips::symbol{value.lexemeValue->contents};
+                }
+                if (STRING_TYPE == value.header->type) {
+                    ret = clips::string{value.lexemeValue->contents};
+                }
+                if (INSTANCE_NAME_TYPE == value.header->type) {
+                    ret = clips::instance_name{value.lexemeValue->contents};
+                }
+                if (EXTERNAL_ADDRESS_TYPE == value.header->type) {
+                    ret = value.externalAddressValue->contents;
+                }
             }
             return ret;
         }

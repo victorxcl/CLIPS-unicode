@@ -152,13 +152,19 @@ void test_benchmark()
                                                         }`)) )==="));
             BOOST_TEST(nullptr != json);
             
-            BOOST_TEST_EQ(clips::integer{1      }, std::any_cast<clips::integer>(CLIPS.eval(u8R"===((json-value-for-pointer ?json /a)    )===")));
-            BOOST_TEST_EQ(clips::string {"hello"}, std::any_cast<clips::string >(CLIPS.eval(u8R"===((json-value-for-pointer ?json /b)    )===")));
-            BOOST_TEST_EQ(clips::real   {12.5   }, std::any_cast<clips::real   >(CLIPS.eval(u8R"===((json-value-for-pointer ?json /c)    )===")));
-            BOOST_TEST_EQ(clips::string {"one"  }, std::any_cast<clips::string >(CLIPS.eval(u8R"===((json-value-for-pointer ?json /baz/0))===")));
-            BOOST_TEST_EQ(clips::string {"two"  }, std::any_cast<clips::string >(CLIPS.eval(u8R"===((json-value-for-pointer ?json /baz/1))===")));
-            BOOST_TEST_EQ(clips::string {"three"}, std::any_cast<clips::string >(CLIPS.eval(u8R"===((json-value-for-pointer ?json /baz/2))===")));
-            BOOST_TEST_EQ(clips::string {"bar"  }, std::any_cast<clips::string >(CLIPS.eval(u8R"===((json-value-for-pointer ?json /foo)  )===")));
+            BOOST_TEST_EQ(clips::integer{1      }, std::any_cast<clips::integer>(CLIPS.eval(u8R"===((json-value-for-path ?json /a)    )===")));
+            BOOST_TEST_EQ(clips::string {"hello"}, std::any_cast<clips::string >(CLIPS.eval(u8R"===((json-value-for-path ?json /b)    )===")));
+            BOOST_TEST_EQ(clips::real   {12.5   }, std::any_cast<clips::real   >(CLIPS.eval(u8R"===((json-value-for-path ?json /c)    )===")));
+            BOOST_TEST_EQ(clips::string {"one"  }, std::any_cast<clips::string >(CLIPS.eval(u8R"===((json-value-for-path ?json /baz/0))===")));
+            BOOST_TEST_EQ(clips::string {"two"  }, std::any_cast<clips::string >(CLIPS.eval(u8R"===((json-value-for-path ?json /baz/1))===")));
+            BOOST_TEST_EQ(clips::string {"three"}, std::any_cast<clips::string >(CLIPS.eval(u8R"===((json-value-for-path ?json /baz/2))===")));
+            BOOST_TEST_EQ(clips::string {"bar"  }, std::any_cast<clips::string >(CLIPS.eval(u8R"===((json-value-for-path ?json /foo)  )===")));
+            
+            CLIPS.eval("(json-set-value-for-path ?json /baz/0 100)");
+            BOOST_TEST_EQ(clips::integer{100}, std::any_cast<clips::integer>(CLIPS.eval(u8R"===((json-value-for-path ?json /baz/0))===")));
+            
+            CLIPS.eval(R"===( (json-set-value-for-path ?json /baz/1 `{"hello":200}`) )===");
+            BOOST_TEST_EQ(clips::integer{200}, std::any_cast<clips::integer>(CLIPS.eval(u8R"===((json-value-for-path ?json /baz/1/hello))===")));
             
             CLIPS.eval("(json-dispose ?json)");
         }
@@ -184,14 +190,51 @@ void test_benchmark()
             CLIPS.eval("(bind ?original-with-patch  (json-patch ?original ?patch ))");
             CLIPS.eval("(bind ?original-diff-result (json-diff  ?original ?result))");
             
-            BOOST_TEST_EQ(nlohmann::json::parse(result), nlohmann::json::parse(std::get<0>(std::any_cast<clips::symbol>(CLIPS.eval("(json-dump ?original-with-patch )")))));
-            BOOST_TEST_EQ(nlohmann::json::parse(patch ), nlohmann::json::parse(std::get<0>(std::any_cast<clips::symbol>(CLIPS.eval("(json-dump ?original-diff-result)")))));
+            BOOST_TEST_EQ(nlohmann::json::parse(result), nlohmann::json::parse(std::get<0>(std::any_cast<clips::symbol>(CLIPS.eval("(json-dump ?original-with-patch  -1)")))));
+            BOOST_TEST_EQ(nlohmann::json::parse(patch ), nlohmann::json::parse(std::get<0>(std::any_cast<clips::symbol>(CLIPS.eval("(json-dump ?original-diff-result -1)")))));
+            
+            BOOST_TEST_EQ(nlohmann::json::parse(original), nlohmann::json::parse(std::get<0>(std::any_cast<clips::symbol>(CLIPS.eval("(json-dump ?original -1)")))));
+            BOOST_TEST_EQ(nlohmann::json::parse(patch   ), nlohmann::json::parse(std::get<0>(std::any_cast<clips::symbol>(CLIPS.eval("(json-dump ?patch    -1)")))));
+            BOOST_TEST_EQ(nlohmann::json::parse(result  ), nlohmann::json::parse(std::get<0>(std::any_cast<clips::symbol>(CLIPS.eval("(json-dump ?result   -1)")))));
             
             CLIPS.eval("(json-dispose ?original            )");
             CLIPS.eval("(json-dispose ?patch               )");
             CLIPS.eval("(json-dispose ?result              )");
             CLIPS.eval("(json-dispose ?original-with-patch )");
             CLIPS.eval("(json-dispose ?original-diff-result)");
+        }
+        {
+            clips::CLIPS CLIPS;
+            // a JSON value
+            const std::string document = R"({
+            "a": "b",
+            "c": { "d": "e", "f": "g" }
+            })";
+            
+            // a patch
+            const std::string patch = R"({
+            "a":"z",
+            "c": { "f": null }
+            })";
+            
+            // the merge patch result
+            const std::string result = R"({
+            "a": "z",
+            "c": { "d": "e" }
+            })";
+            
+            CLIPS.eval((boost::format("(bind ?document (json-create `%1%`))")%document).str().c_str());
+            CLIPS.eval((boost::format("(bind ?patch    (json-create `%1%`))")%patch   ).str().c_str());
+            
+            CLIPS.eval("(bind ?document-merge-patch  (json-merge-patch ?document ?patch))");
+            
+            BOOST_TEST_EQ(nlohmann::json::parse(result), nlohmann::json::parse(std::get<0>(std::any_cast<clips::symbol>(CLIPS.eval("(json-dump ?document-merge-patch -1)")))));
+            
+            BOOST_TEST_EQ(nlohmann::json::parse(result), nlohmann::json::parse(std::get<0>(std::any_cast<clips::symbol>(CLIPS.eval("(json-dump ?document -1)")))));
+            BOOST_TEST_EQ(nlohmann::json::parse(patch ), nlohmann::json::parse(std::get<0>(std::any_cast<clips::symbol>(CLIPS.eval("(json-dump ?patch    -1)")))));
+            
+            CLIPS.eval("(json-dispose ?document)");
+            CLIPS.eval("(json-dispose ?patch   )");
         }
     }
 #endif// CLIPS_EXTENSION_UTILITY_ENABLED
@@ -415,9 +458,15 @@ clips::boolean utility_json_validate(Environment*environment, const char*JSON)
 {
     return clips::boolean{nlohmann::json::accept(JSON)};
 }
-clips::symbol utility_json_dump(Environment*environment, nlohmann::json*JSON)
+clips::symbol utility_json_dump(Environment*environment, nlohmann::json*json, int indent)
 {
-    return clips::symbol{static_cast<nlohmann::json*>(JSON)->dump(4)};
+    return clips::symbol{static_cast<nlohmann::json*>(json)->dump(indent)};
+}
+clips::symbol utility_json_dump_dispose(Environment*environment, nlohmann::json*json, int indent)
+{
+    auto symbol_dump = utility_json_dump(environment, json, indent);
+    utility_json_dispose(environment, json);
+    return symbol_dump;
 }
 clips::external_address utility_json_diff(Environment*environment, nlohmann::json*A, nlohmann::json*B)
 {
@@ -438,9 +487,9 @@ clips::external_address utility_json_merge_patch(Environment*environment, nlohma
 }
 
 // void*pointer, const char*KEY, const char*DEFAULT
-static void utility_json_value_for_pointer(Environment*environment, UDFContext *context, UDFValue*out)
+static void utility_json_value_for_path(Environment*environment, UDFContext *context, UDFValue*out)
 {
-    UDFValue pointer, key, _default;
+    UDFValue pointer, key;
     
     UDFFirstArgument(context, clips::argument_code<clips::external_address>::expect_bits, &pointer);
     UDFNextArgument (context,
@@ -452,22 +501,25 @@ static void utility_json_value_for_pointer(Environment*environment, UDFContext *
                          clips::argument_code<clips::integer>::expect_bits|
                          clips::argument_code<clips::real   >::expect_bits|
                          clips::argument_code<clips::string >::expect_bits|
-                         clips::argument_code<clips::symbol >::expect_bits, &_default);
+                         clips::argument_code<clips::symbol >::expect_bits, out);
     }
     try {
         nlohmann::json* json = static_cast<nlohmann::json*>(pointer.externalAddressValue->contents);
-        nlohmann::json&value = json->at(nlohmann::json::json_pointer(key.lexemeValue->contents));
-        
-        /*  */ if (value.is_string()) {
-            out->lexemeValue = CreateString(environment, value.get<std::string>().c_str());
-        } else if (value.is_boolean()) {
-            out->lexemeValue = CreateBoolean(environment, value.get<bool>());
-        } else if (value.is_number_float()) {
-            out->floatValue = CreateFloat(environment, value.get<double>());
-        } else if (value.is_number_integer() || value.is_number_unsigned()) {
-            out->integerValue = CreateInteger(environment, value.get<long long>());
-        } else {
-            out->lexemeValue = CreateSymbol(environment, value.dump().c_str());
+        nlohmann::json_pointer pointer = nlohmann::json::json_pointer(key.lexemeValue->contents);
+        if (json->contains(pointer)) {
+            nlohmann::json&value = json->at(pointer);
+            
+            /*  */ if (value.is_string()) {
+                out->lexemeValue = CreateString(environment, value.get<std::string>().c_str());
+            } else if (value.is_boolean()) {
+                out->lexemeValue = CreateBoolean(environment, value.get<bool>());
+            } else if (value.is_number_float()) {
+                out->floatValue = CreateFloat(environment, value.get<double>());
+            } else if (value.is_number_integer() || value.is_number_unsigned()) {
+                out->integerValue = CreateInteger(environment, value.get<long long>());
+            } else {
+                out->lexemeValue = CreateSymbol(environment, value.dump().c_str());
+            }
         }
     } catch (const std::exception&e) {
         WriteString(environment, STDERR, e.what());
@@ -475,7 +527,8 @@ static void utility_json_value_for_pointer(Environment*environment, UDFContext *
         UDFThrowError(context);
     }
 }
-static void _AddUDF_utility_json_value_for_pointer(Environment*environment)
+
+static void _AddUDF_utility_json_value_for_path(Environment*environment)
 {
     char returnCode[] = {
         clips::return_code<clips::boolean>::value,
@@ -496,8 +549,87 @@ static void _AddUDF_utility_json_value_for_pointer(Environment*environment)
         clips::argument_code<clips::string >::value,
         clips::argument_code<clips::symbol >::value, 0
     };
-    AddUDF(environment, "json-value-for-pointer", returnCode, 2, 3, argumentsCode,
-           utility_json_value_for_pointer, "utility_json_value_for_pointer", nullptr);
+    AddUDF(environment, "json-value-for-path", returnCode, 2, 3, argumentsCode,
+           utility_json_value_for_path, "utility_json_value_for_path", nullptr);
+}
+
+static void utility_json_set_value_for_path(Environment*environment, UDFContext *context, UDFValue*out)
+{
+    UDFValue pointer, key, value;
+    
+    UDFFirstArgument(context, clips::argument_code<clips::external_address>::expect_bits, &pointer);
+    UDFNextArgument (context,
+                     clips::argument_code<clips::string>::expect_bits|
+                     clips::argument_code<clips::symbol>::expect_bits, &key);
+    UDFNextArgument (context,
+                     clips::argument_code<clips::boolean>::expect_bits|
+                     clips::argument_code<clips::integer>::expect_bits|
+                     clips::argument_code<clips::real   >::expect_bits|
+                     clips::argument_code<clips::string >::expect_bits|
+                     clips::argument_code<clips::symbol >::expect_bits|
+                     clips::argument_code<clips::external_address>::expect_bits, &value);
+    try {
+        nlohmann::json* json = static_cast<nlohmann::json*>(pointer.externalAddressValue->contents);
+        nlohmann::json_pointer pointer = nlohmann::json::json_pointer(key.lexemeValue->contents);
+        nlohmann::json&json_target = json->operator[](pointer);
+            
+        /*  */ if (STRING_TYPE == value.header->type) {
+            if (auto&&tmp = nlohmann::json::parse(value.lexemeValue->contents); tmp.is_object() or tmp.is_array()) {
+                json_target = tmp;
+            } else {
+                json_target = value.lexemeValue->contents;
+            }
+        } else if (SYMBOL_TYPE == value.header->type) {
+            /*  */ if (TrueSymbol(environment) == value.lexemeValue) {
+                json_target = true;
+            } else if (FalseSymbol(environment) == value.lexemeValue) {
+                json_target = false;
+            } else {
+                if (auto&&tmp = nlohmann::json::parse(value.lexemeValue->contents); tmp.is_object() or tmp.is_array()) {
+                    json_target = tmp;
+                } else {
+                    json_target = value.lexemeValue->contents;
+                }
+            }
+        } else if (FLOAT_TYPE == value.header->type) {
+            json_target = value.floatValue->contents;
+        } else if (INTEGER_TYPE == value.header->type) {
+            json_target = value.integerValue->contents;
+        } else if (EXTERNAL_ADDRESS_TYPE == value.header->type){
+            nlohmann::json*pointer = static_cast<nlohmann::json*>(value.externalAddressValue->contents);
+            json_target = *pointer;
+        } else {
+            throw std::invalid_argument((boost::format("[ERROR] invalid argument for json key path: %1%")%key.lexemeValue->contents).str());
+        }
+    } catch (const std::exception&e) {
+        WriteString(environment, STDERR, e.what());
+        WriteString(environment, STDERR, "\n");
+        UDFThrowError(context);
+    }
+}
+static void _AddUDF_utility_json_set_value_for_path(Environment*environment)
+{
+    char returnCode[] = {
+        clips::return_code<clips::boolean>::value,
+        clips::return_code<clips::integer>::value,
+        clips::return_code<clips::real   >::value,
+        clips::return_code<clips::string >::value,
+        clips::return_code<clips::symbol >::value, 0
+    };
+    char argumentsCode[] = { '*', ';',
+        clips::argument_code<clips::external_address>::value, ';',
+        
+        clips::argument_code<clips::string>::value,
+        clips::argument_code<clips::symbol>::value, ';',
+        
+        clips::argument_code<clips::boolean>::value,
+        clips::argument_code<clips::integer>::value,
+        clips::argument_code<clips::real   >::value,
+        clips::argument_code<clips::string >::value,
+        clips::argument_code<clips::symbol >::value, 0
+    };
+    AddUDF(environment, "json-set-value-for-path", returnCode, 3, 3, argumentsCode,
+           utility_json_set_value_for_path, "utility_json_set_value_for_path", nullptr);
 }
 
 void utility_initialize(Environment*environment)
@@ -524,12 +656,14 @@ void utility_initialize(Environment*environment)
 
     clips::user_function<__LINE__>(environment, "json-create",      utility_json_create);
     clips::user_function<__LINE__>(environment, "json-dispose",     utility_json_dispose);
+    clips::user_function<__LINE__>(environment, "json-dump-dispose",utility_json_dump_dispose);
     clips::user_function<__LINE__>(environment, "json-dump",        utility_json_dump);
     clips::user_function<__LINE__>(environment, "json-diff",        utility_json_diff);
     clips::user_function<__LINE__>(environment, "json-patch",       utility_json_patch);
     clips::user_function<__LINE__>(environment, "json-merge-patch", utility_json_merge_patch);
     
-    _AddUDF_utility_json_value_for_pointer(environment);
+    _AddUDF_utility_json_value_for_path(environment);
+    _AddUDF_utility_json_set_value_for_path(environment);
 }
 
 }// namespace clips::extension {
