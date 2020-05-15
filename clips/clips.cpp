@@ -898,20 +898,23 @@ void _zeromq_make_session(Environment*environment, std::shared_ptr<zmq::socket_t
         auto RouterWriteFunction = [](Environment *environment, const char *logicalName, const char *str, void *context){
             auto session = static_cast<zeromqData::Session*>(context);
             try {
-                std::ostream os(&session->buffer_send);
-                os << str;
+                {
+                    std::ostream os(&session->buffer_send);
+                    os << str;
+                }
                 
                 auto command = boost::asio::buffer_cast<const char*>(session->buffer_send.data());
+                auto command_size = session->buffer_send.size();
                 
                 /*  */ if (zeromqData::Session::Protocol::RAW == session->protocol) {
-                    session->socket->send(zmq::const_buffer(command, std::strlen(command)), zmq::send_flags::dontwait);
-                    session->buffer_send.consume(std::strlen(command));
+                    session->socket->send(zmq::const_buffer(command, command_size), zmq::send_flags::dontwait);
+                    session->buffer_send.consume(command_size);
                 } else if (zeromqData::Session::Protocol::SEXP == session->protocol && CompleteCommand(command)) {
-                    session->socket->send(zmq::const_buffer(command, std::strlen(command)), zmq::send_flags::dontwait);
-                    session->buffer_send.consume(std::strlen(command));
+                    session->socket->send(zmq::const_buffer(command, command_size), zmq::send_flags::dontwait);
+                    session->buffer_send.consume(command_size);
                 } else if (zeromqData::Session::Protocol::JSON == session->protocol && nlohmann::json::accept(command)) {
-                    session->socket->send(zmq::const_buffer(command, std::strlen(command)), zmq::send_flags::dontwait);
-                    session->buffer_send.consume(std::strlen(command));
+                    session->socket->send(zmq::const_buffer(command, command_size), zmq::send_flags::dontwait);
+                    session->buffer_send.consume(command_size);
                 }
                 
             } catch (const std::exception&e) {
@@ -1028,6 +1031,18 @@ void zeromq_connect(Environment*environment, const char* ROUTER, const char* ADD
     }
 }
 
+void zeromq_close(Environment*environment, const char* ROUTER)
+{
+    try {
+        auto session = ZeromqData(environment)->session_list.at(ROUTER);
+        session->socket = nullptr;
+        
+    } catch (const std::exception& e) {
+        WriteString(environment, STDERR, e.what());
+        WriteString(environment, STDERR, "\n");
+    }
+}
+
 clips::symbol zeromq_protocol(Environment*environment, const char*ROUTER, const char*PROTOCOL)
 {
     const char*protocol_last = "unknown";
@@ -1094,6 +1109,7 @@ void zeromq_initialize(Environment*environment)
     
     clips::user_function<__LINE__>(environment, "zmq-bind",             zeromq_bind);
     clips::user_function<__LINE__>(environment, "zmq-connect",          zeromq_connect);
+    clips::user_function<__LINE__>(environment, "zmq-close",            zeromq_close);
     clips::user_function<__LINE__>(environment, "zmq-protocol",         zeromq_protocol);
     clips::user_function<__LINE__>(environment, "zmq-peek-send-buffer", zeromq_peek_send_buffer);
     clips::user_function<__LINE__>(environment, "zmq-peek-recv-buffer", zeromq_peek_recv_buffer);
