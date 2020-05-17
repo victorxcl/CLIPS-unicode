@@ -898,10 +898,8 @@ void _zeromq_make_session(Environment*environment, std::shared_ptr<zmq::socket_t
         auto RouterWriteFunction = [](Environment *environment, const char *logicalName, const char *str, void *context){
             auto session = static_cast<zeromqData::Session*>(context);
             try {
-                {
-                    std::ostream os(&session->buffer_send);
-                    os << str;
-                }
+                std::ostream os(&session->buffer_send);
+                os << str;
                 
                 auto command = boost::asio::buffer_cast<const char*>(session->buffer_send.data());
                 auto command_size = session->buffer_send.size();
