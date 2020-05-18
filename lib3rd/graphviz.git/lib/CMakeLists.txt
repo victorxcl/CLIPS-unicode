@@ -1,0 +1,30 @@
+# No dependencies
+add_subdirectory(cdt)
+add_subdirectory(circogen)
+add_subdirectory(common)
+add_subdirectory(dotgen)
+add_subdirectory(fdpgen)
+add_subdirectory(ingraphs)
+add_subdirectory(label)
+add_subdirectory(mingle)
+add_subdirectory(neatogen)
+add_subdirectory(ortho)
+add_subdirectory(osage)
+add_subdirectory(pack)
+add_subdirectory(patchwork)
+add_subdirectory(pathplan)
+add_subdirectory(rbtree)
+add_subdirectory(sparse)
+add_subdirectory(sfdpgen)
+add_subdirectory(spine)
+add_subdirectory(topfish)
+add_subdirectory(twopigen)
+add_subdirectory(vmalloc)
+add_subdirectory(vpsc)
+add_subdirectory(xdot)
+
+# Dependent on: cdt
+add_subdirectory(cgraph)
+
+# Multiple dependencies
+add_subdirectory(gvc)
