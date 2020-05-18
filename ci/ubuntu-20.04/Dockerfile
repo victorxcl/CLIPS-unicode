@@ -1,4 +1,4 @@
-FROM ubuntu:19.10
+FROM ubuntu:20.04
 
 ARG DEBIAN_FRONTEND=noninteractive
 
@@ -12,6 +12,7 @@ RUN apt-get update && apt-get install --no-install-recommends -y autoconf
 RUN apt-get update && apt-get install --no-install-recommends -y bison
 RUN apt-get update && apt-get install --no-install-recommends -y libtool
 RUN apt-get update && apt-get install --no-install-recommends -y flex
+RUN apt-get update && apt-get install --no-install-recommends -y ksh
 
 # Debian build utilities
 RUN apt-get update && apt-get install --no-install-recommends -y quilt
