@@ -1127,7 +1127,8 @@ static void zeromq_poll(Environment*environment, const char* KEY)
         WriteString(environment, STDERR, "\n");
     }
 }
-static clips::boolean zeromq_has_message(Environment*environment, const char* KEY, const char*ROUTER)
+
+static clips::boolean zeromq_poll_has_message(Environment*environment, const char* KEY, const char*ROUTER)
 {
     try {
         const auto& session = ZeromqData(environment)->session_map.at(ROUTER);
@@ -1146,6 +1147,30 @@ static clips::boolean zeromq_has_message(Environment*environment, const char* KE
     
     return clips::boolean{false};
 }
+
+static clips::multifield zeromq_poll_routers_with_message(Environment*environment, const char* KEY)
+{
+    clips::multifield multifield;
+    try {
+        std::unordered_map<void*, std::string> to_router;
+        for (auto&&[router, session] : ZeromqData(environment)->session_map) {
+            to_router[session->socket.get()] = router;
+        }
+        const auto&   items = ZeromqData(environment)->pollitems_map.at(KEY);
+        for (auto&&item : items) {
+            if (item.revents & ZMQ_POLLIN) {
+                std::string router = to_router.at(item.socket);
+                multifield.push_back(clips::symbol{router});
+            }
+        }
+    } catch (const std::exception& e) {
+        WriteString(environment, STDERR, e.what());
+        WriteString(environment, STDERR, "\n");
+    }
+    
+    return multifield;
+}
+
 
 clips::symbol zeromq_protocol(Environment*environment, const char*ROUTER, const char*PROTOCOL)
 {
@@ -1220,7 +1245,10 @@ void zeromq_initialize(Environment*environment)
     clips::user_function<__LINE__>(environment, "zmq-version",          zeromq_version);
     
     _AddUDF_zeromq_poll_create(environment); // zmq-poll-create
-    clips::user_function<__LINE__>(environment, "zmq-poll",             zeromq_poll);
+    clips::user_function<__LINE__>(environment, "zmq-poll",                         zeromq_poll);
+    clips::user_function<__LINE__>(environment, "zmq-poll-has-message",             zeromq_poll_has_message);
+    clips::user_function<__LINE__>(environment, "zmq-poll-routers-with-message",    zeromq_poll_routers_with_message);
+    
 }
 
 }// namespace clips::extension {
