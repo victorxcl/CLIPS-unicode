@@ -39,7 +39,7 @@ namespace clips {
     
     using integer           = long long;
     using real              = double;
-    using boolean           = std::tuple<bool,        std::integral_constant<char,'b'>>;
+    using boolean           = bool;//std::tuple<bool,        std::integral_constant<char,'b'>>;
     using string            = std::tuple<std::string, std::integral_constant<char,'s'>>;
     using symbol            = std::tuple<std::string, std::integral_constant<char,'y'>>;
     using instance_name     = std::tuple<std::string, std::integral_constant<char,'n'>>;
@@ -50,7 +50,7 @@ namespace clips {
     // ////////////////////////////////////////////////////////////////////////////////////////
     template<typename>struct type_code      {enum{value='*', expect_bits=0};};// * Any Type
     template<>struct type_code<bool>        {enum{value='b', expect_bits=BOOLEAN_BIT};};// b Boolean
-    template<>struct type_code<boolean>     {enum{value='b', expect_bits=BOOLEAN_BIT};};// b Boolean
+//    template<>struct type_code<boolean>     {enum{value='b', expect_bits=BOOLEAN_BIT};};// b Boolean
 
     template<>struct type_code<float>       {enum{value='d', expect_bits=FLOAT_BIT};};// d Double Precision Float
     template<>struct type_code<double>      {enum{value='d', expect_bits=FLOAT_BIT};};// d Double Precision Float
@@ -115,7 +115,7 @@ namespace clips {
 
 
     CLIPS_ARGUMENT_TEMPLATE(              bool,               udfv.lexemeValue != FalseSymbol(CLIPS))
-    CLIPS_ARGUMENT_TEMPLATE(           boolean,       boolean{udfv.lexemeValue->contents})
+//    CLIPS_ARGUMENT_TEMPLATE(           boolean,       boolean{udfv.lexemeValue->contents})
     CLIPS_ARGUMENT_TEMPLATE(       const char*,               udfv.lexemeValue->contents )
     CLIPS_ARGUMENT_TEMPLATE(       std::string,   std::string{udfv.lexemeValue->contents})
     CLIPS_ARGUMENT_TEMPLATE(            string,        string{udfv.lexemeValue->contents})
@@ -140,14 +140,46 @@ namespace clips {
 /**/        void apply(Environment*CLIPS, UDFValue*udfv, R&&x){ \
 /**/            udfv->value = CreateValue/*(CLIPS, x)*/;        \
 /**/        }                                                   \
-/**/    };/* CLIPS_SELECT_ACTION */
-    CLIPS_CREATE_PRIMITIVE_VALUE('b', CreateBoolean/*     */(CLIPS,std::get<0>(x)/*    */))
+/**/    };/* CLIPS_CREATE_PRIMITIVE_VALUE */
+    CLIPS_CREATE_PRIMITIVE_VALUE('b', CreateBoolean/*     */(CLIPS,x))
     CLIPS_CREATE_PRIMITIVE_VALUE('s', CreateString/*      */(CLIPS,std::get<0>(x).c_str()))
     CLIPS_CREATE_PRIMITIVE_VALUE('y', CreateSymbol/*      */(CLIPS,std::get<0>(x).c_str()))
     CLIPS_CREATE_PRIMITIVE_VALUE('n', CreateInstanceName/**/(CLIPS,std::get<0>(x).c_str()))
     CLIPS_CREATE_PRIMITIVE_VALUE('d', CreateFloat/*       */(CLIPS,x))
     CLIPS_CREATE_PRIMITIVE_VALUE('l', CreateInteger/*     */(CLIPS,x))
     CLIPS_CREATE_PRIMITIVE_VALUE('e', CreateCExternalAddress(CLIPS,std::get<0>(x)/*    */))
+
+    template<> struct create_primitive_value<return_code<multifield>::value> {
+        static void apply(Environment*CLIPS, UDFValue*udfv, const multifield&x){
+            MultifieldBuilder* mBuilder = CreateMultifieldBuilder(CLIPS, x.size());
+            for (auto&&y:x) {
+                if (y.has_value()) {
+                    /*  */ if (typeid(integer) == y.type()) {
+                        MBAppendInteger(mBuilder, std::any_cast<integer>(y));
+                    } else if (typeid(real) == y.type()) {
+                        MBAppendFloat(mBuilder, std::any_cast<real>(y));
+                    } else if (typeid(boolean) == y.type()) {
+                        if (std::any_cast<boolean>(y)) {
+                            MBAppendCLIPSLexeme(mBuilder, TrueSymbol(CLIPS));
+                        } else {
+                            MBAppendCLIPSLexeme(mBuilder, FalseSymbol(CLIPS));
+                        }
+                    } else if (typeid(string) == y.type()) {
+                        MBAppendString(mBuilder, std::get<0>(std::any_cast<string>(y)).c_str());
+                    } else if (typeid(symbol) == y.type()) {
+                        MBAppendSymbol(mBuilder, std::get<0>(std::any_cast<symbol>(y)).c_str());
+                    } else if (typeid(instance_name) == y.type()) {
+                        MBAppendInstanceName(mBuilder, std::get<0>(std::any_cast<instance_name>(y)).c_str());
+                    } else if (typeid(external_address) == y.type()) {
+                        CLIPSExternalAddress*externalAddress = CreateCExternalAddress(CLIPS, std::get<0>(std::any_cast<external_address>(y)));
+                        MBAppendCLIPSExternalAddress(mBuilder, externalAddress);
+                    }
+                }
+            }
+            udfv->value = MBCreate(mBuilder);
+            MBDispose(mBuilder);
+        }
+    };
 #undef CLIPS_CREATE_PRIMITIVE_VALUE
     
     template<typename R, typename ... Args>struct build_arguments_code;
@@ -356,26 +388,44 @@ namespace clips {
                 WriteString(*this, STDERR, script);
                 WriteString(*this, STDERR, "\n");
             } else {
-                if (INTEGER_TYPE == value.header->type) {
-                    ret = value.integerValue->contents;
-                }
-                if (FLOAT_TYPE == value.header->type) {
-                    ret = value.floatValue->contents;
-                }
-                if (SYMBOL_TYPE == value.header->type) {
-                    ret = clips::symbol{value.lexemeValue->contents};
-                }
-                if (STRING_TYPE == value.header->type) {
-                    ret = clips::string{value.lexemeValue->contents};
-                }
-                if (INSTANCE_NAME_TYPE == value.header->type) {
-                    ret = clips::instance_name{value.lexemeValue->contents};
-                }
-                if (EXTERNAL_ADDRESS_TYPE == value.header->type) {
-                    ret = value.externalAddressValue->contents;
-                }
+                ret = from_clips_value(value);
             }
             return ret;
+        }
+        std::any from_clips_value(CLIPSValue value)
+        {
+            if (INTEGER_TYPE == value.header->type) {
+                return value.integerValue->contents;
+            }
+            if (FLOAT_TYPE == value.header->type) {
+                return value.floatValue->contents;
+            }
+            if (SYMBOL_TYPE == value.header->type) {
+                /*  */ if (value.lexemeValue == TrueSymbol(this->env.get())) {
+                    return clips::boolean{true};
+                } else if (value.lexemeValue == FalseSymbol(this->env.get())) {
+                    return clips::boolean{false};
+                } else {
+                    return clips::symbol{value.lexemeValue->contents};
+                }
+            }
+            if (STRING_TYPE == value.header->type) {
+                return clips::string{value.lexemeValue->contents};
+            }
+            if (INSTANCE_NAME_TYPE == value.header->type) {
+                return clips::instance_name{value.lexemeValue->contents};
+            }
+            if (EXTERNAL_ADDRESS_TYPE == value.header->type) {
+                return value.externalAddressValue->contents;
+            }
+            if (MULTIFIELD_TYPE == value.header->type) {
+                clips::multifield ret;
+                for (int i=0; i<value.multifieldValue->length; i++) {
+                    ret.push_back(from_clips_value(value.multifieldValue->contents[i]));
+                }
+                return ret;
+            }
+            return clips::boolean{false};
         }
     };
 }//namespace clips

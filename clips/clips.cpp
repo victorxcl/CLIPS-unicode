@@ -138,6 +138,29 @@ void test_benchmark()
         BOOST_TEST_EQ(clips::string{"good"}, std::any_cast<clips::string>(CLIPS.eval("(good)")));
         BOOST_TEST_EQ(clips::string{"luck"}, std::any_cast<clips::string>(CLIPS.eval("(luck)")));
         BOOST_TEST_EQ(clips::string{"goodluck"}, std::any_cast<clips::string>(CLIPS.eval("(str-cat (good) (luck))")));
+        
+        {
+            auto&&multifield = std::any_cast<clips::multifield>(CLIPS.eval("(create$ (good) (luck))"));
+            BOOST_TEST_EQ(clips::string{"good"}, std::any_cast<clips::string>(multifield.at(0)));
+            BOOST_TEST_EQ(clips::string{"luck"}, std::any_cast<clips::string>(multifield.at(1)));
+        }
+        {
+            clips::user_function<__LINE__>(CLIPS, "return-multifiled$", static_cast<clips::multifield(*)(Environment*)>([](Environment*){
+                return clips::multifield{
+                    clips::string{"good"},
+                    clips::symbol{"luck"},
+                    clips::integer    {1},
+                    clips::real     {2.5},
+                    clips::boolean {true}
+                };
+            }));
+            const auto&&multifield = std::any_cast<clips::multifield>(CLIPS.eval("(return-multifiled$)"));
+            BOOST_TEST_EQ(clips::string{"good"}, std::any_cast<clips::string >(multifield.at(0)));
+            BOOST_TEST_EQ(clips::symbol{"luck"}, std::any_cast<clips::symbol >(multifield.at(1)));
+            BOOST_TEST_EQ(clips::integer    {1}, std::any_cast<clips::integer>(multifield.at(2)));
+            BOOST_TEST_EQ(clips::real     {2.5}, std::any_cast<clips::real   >(multifield.at(3)));
+            BOOST_TEST_EQ(clips::boolean {true}, std::any_cast<clips::boolean>(multifield.at(4)));
+        }
     }
 #if CLIPS_EXTENSION_UTILITY_ENABLED
     {
@@ -487,7 +510,7 @@ clips::external_address utility_json_merge_patch(Environment*environment, nlohma
 }
 
 // void*pointer, const char*KEY, const char*DEFAULT
-static void utility_json_value_for_path(Environment*environment, UDFContext *context, UDFValue*out)
+static void _UDF_utility_json_value_for_path(Environment*environment, UDFContext *context, UDFValue*out)
 {
     UDFValue pointer, key;
     
@@ -550,10 +573,10 @@ static void _AddUDF_utility_json_value_for_path(Environment*environment)
         clips::argument_code<clips::symbol >::value, 0
     };
     AddUDF(environment, "json-value-for-path", returnCode, 2, 3, argumentsCode,
-           utility_json_value_for_path, "utility_json_value_for_path", nullptr);
+           _UDF_utility_json_value_for_path, "_UDF_utility_json_value_for_path", nullptr);
 }
 
-static void utility_json_set_value_for_path(Environment*environment, UDFContext *context, UDFValue*out)
+static void _UDF_utility_json_set_value_for_path(Environment*environment, UDFContext *context, UDFValue*out)
 {
     UDFValue pointer, key, value;
     
@@ -629,7 +652,7 @@ static void _AddUDF_utility_json_set_value_for_path(Environment*environment)
         clips::argument_code<clips::symbol >::value, 0
     };
     AddUDF(environment, "json-set-value-for-path", returnCode, 3, 3, argumentsCode,
-           utility_json_set_value_for_path, "utility_json_set_value_for_path", nullptr);
+           _UDF_utility_json_set_value_for_path, "_UDF_utility_json_set_value_for_path", nullptr);
 }
 
 void utility_initialize(Environment*environment)
@@ -877,7 +900,8 @@ struct zeromqData {
             RAW, JSON, SEXP
         } protocol { Protocol::SEXP };
     };
-    std::unordered_map<std::string, std::shared_ptr<Session>>   session_list;
+    std::unordered_map<std::string, std::shared_ptr<Session>    >   session_map;
+    std::unordered_map<std::string, std::vector<zmq::pollitem_t>>   pollitems_map;
 };
 
 #define ZEROMQ_DATA                USER_ENVIRONMENT_DATA + 2
@@ -888,7 +912,7 @@ void _zeromq_make_session(Environment*environment, std::shared_ptr<zmq::socket_t
     auto session = std::make_shared<zeromqData::Session>();
     session->router = ROUTER;
     session->socket = socket;
-    ZeromqData(environment)->session_list[ROUTER] = session;
+    ZeromqData(environment)->session_map[ROUTER] = session;
     
     /* prepare router for network */{
         auto RouterQueryFunction = [](Environment *environment, const char *logicalName, void *context) {
@@ -990,7 +1014,13 @@ zmq::socket_type _zeromq_socket_type_from_string(const char*SOCKET_TYPE)
     else {
         throw std::invalid_argument("\nERROR:\tzeromq socket type only support: \n\n"
                                     "\treq, rep, dealer, router, pub, sub, xpub, xsub, push, pull,\n"
-                                    "\tserver, client, radio, dish, stream, pair\n");
+#if defined(ZMQ_BUILD_DRAFT_API) && ZMQ_VERSION >= ZMQ_MAKE_VERSION(4, 2, 0)
+                                    "\tserver, client, radio, dish,\n"
+#endif
+#if ZMQ_VERSION_MAJOR >= 4
+                                    "\tstream,\n"
+#endif
+                                    "\tpair\n");
     }
     
     return socket_type;
@@ -1032,7 +1062,7 @@ void zeromq_connect(Environment*environment, const char* ROUTER, const char* ADD
 void zeromq_close(Environment*environment, const char* ROUTER)
 {
     try {
-        auto session = ZeromqData(environment)->session_list.at(ROUTER);
+        auto session = ZeromqData(environment)->session_map.at(ROUTER);
         session->socket = nullptr;
         
     } catch (const std::exception& e) {
@@ -1041,11 +1071,87 @@ void zeromq_close(Environment*environment, const char* ROUTER)
     }
 }
 
+static void _UDF_zeromq_poll_create(Environment*environment, UDFContext *context, UDFValue*out)
+{
+    try {
+        std::string                  key;
+        std::vector<zmq::pollitem_t> items;
+        
+        constexpr auto expect_bits = clips::argument_code<clips::string>::expect_bits|
+        /*                        */ clips::argument_code<clips::symbol>::expect_bits;
+        
+        {
+            UDFValue value;
+            UDFFirstArgument(context, expect_bits, &value);
+            key = std::string(value.lexemeValue->contents, value.lexemeValue->count);
+        }
+        
+        while(UDFHasNextArgument(context)) {
+            UDFValue value;
+            UDFNextArgument(context, expect_bits, &value);
+            std::string router(value.lexemeValue->contents, value.lexemeValue->count);
+            auto session = ZeromqData(environment)->session_map.at(router);
+            items.push_back({static_cast<void*>(session->socket.get()), 0, ZMQ_POLLIN, 0});
+        }
+        
+        ZeromqData(environment)->pollitems_map[key] = items;
+    } catch (const std::exception& e) {
+        WriteString(environment, STDERR, e.what());
+        WriteString(environment, STDERR, "\n");
+    }
+}
+
+static void _AddUDF_zeromq_poll_create(Environment*environment)
+{
+    char returnCode[] = {
+        clips::return_code<clips::integer>::value, 0
+    };
+    char argumentsCode[] = {
+        clips::argument_code<clips::string>::value,
+        clips::argument_code<clips::symbol>::value, ';',
+        
+        clips::argument_code<clips::string>::value,
+        clips::argument_code<clips::symbol>::value, ';', 0
+    };
+    AddUDF(environment, "zmq-poll-create", returnCode, 2, UNBOUNDED, argumentsCode,
+           _UDF_zeromq_poll_create, "_UDF_zeromq_poll_create", nullptr);
+}
+
+static void zeromq_poll(Environment*environment, const char* KEY)
+{
+    try {
+        auto& items = ZeromqData(environment)->pollitems_map.at(KEY);
+        zmq::poll(items);
+    } catch (const std::exception& e) {
+        WriteString(environment, STDERR, e.what());
+        WriteString(environment, STDERR, "\n");
+    }
+}
+static clips::boolean zeromq_has_message(Environment*environment, const char* KEY, const char*ROUTER)
+{
+    try {
+        const auto& session = ZeromqData(environment)->session_map.at(ROUTER);
+        const auto&   items = ZeromqData(environment)->pollitems_map.at(KEY);
+        for (auto&&item : items) {
+            if (item.socket == session->socket.get()) {
+                if (item.revents & ZMQ_POLLIN) {
+                    return clips::boolean{true};
+                }
+            }
+        }
+    } catch (const std::exception& e) {
+        WriteString(environment, STDERR, e.what());
+        WriteString(environment, STDERR, "\n");
+    }
+    
+    return clips::boolean{false};
+}
+
 clips::symbol zeromq_protocol(Environment*environment, const char*ROUTER, const char*PROTOCOL)
 {
     const char*protocol_last = "unknown";
     try {
-        auto session = ZeromqData(environment)->session_list.at(ROUTER);
+        auto session = ZeromqData(environment)->session_map.at(ROUTER);
                                                                                                         
         /*  */ if (zeromqData::Session::Protocol::SEXP == session->protocol) {
             protocol_last = "clips";
@@ -1077,7 +1183,7 @@ clips::symbol zeromq_protocol(Environment*environment, const char*ROUTER, const 
 /**/{                                                                                       \
 /**/    const char* content = "";                                                           \
 /**/    try{                                                                                \
-/**/        auto session = ZeromqData(environment)->session_list.at(ROUTER);                \
+/**/        auto session = ZeromqData(environment)->session_map.at(ROUTER);                 \
 /**/        content = boost::asio::buffer_cast<const char*>(session->buffer_##send.data()); \
 /**/    } catch (const std::exception&e) {                                                  \
 /**/        WriteString(environment, STDERR, e.what());                                     \
@@ -1112,6 +1218,9 @@ void zeromq_initialize(Environment*environment)
     clips::user_function<__LINE__>(environment, "zmq-peek-send-buffer", zeromq_peek_send_buffer);
     clips::user_function<__LINE__>(environment, "zmq-peek-recv-buffer", zeromq_peek_recv_buffer);
     clips::user_function<__LINE__>(environment, "zmq-version",          zeromq_version);
+    
+    _AddUDF_zeromq_poll_create(environment); // zmq-poll-create
+    clips::user_function<__LINE__>(environment, "zmq-poll",             zeromq_poll);
 }
 
 }// namespace clips::extension {
