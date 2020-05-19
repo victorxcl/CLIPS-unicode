@@ -1352,11 +1352,63 @@ clips::string mustache_render_with_partials(Environment*environment, const char*
     return clips::string{""};
 }
 
+static void _UDF_mustache_render(Environment*environment, UDFContext *context, UDFValue*out)
+{
+    try {
+        std::string VIEW;
+        std::string CONTEXT;
+        std::string PARTIALS;
+        constexpr auto expect_bits = clips::argument_code<clips::string>::expect_bits|
+        /*                        */ clips::argument_code<clips::symbol>::expect_bits;
+        
+        {
+            UDFValue value;
+            UDFFirstArgument(context, expect_bits, &value);
+            VIEW = std::string(value.lexemeValue->contents, value.lexemeValue->count);
+        }
+        {
+            UDFValue value;
+            UDFNextArgument(context, expect_bits, &value);
+            CONTEXT = std::string(value.lexemeValue->contents, value.lexemeValue->count);
+        }
+        
+        clips::string result;
+        if(UDFHasNextArgument(context)) {
+            UDFValue value;
+            UDFNextArgument(context, expect_bits, &value);
+            PARTIALS = std::string(value.lexemeValue->contents, value.lexemeValue->count);
+            result = mustache_render_with_partials(environment, VIEW.c_str(), CONTEXT.c_str(), PARTIALS.c_str());
+        } else {
+            result = mustache_render(environment, VIEW.c_str(), CONTEXT.c_str());
+        }
+        
+        out->lexemeValue = CreateString(environment, std::get<0>(result).c_str());
+    } catch (const std::exception& e) {
+        WriteString(environment, STDERR, e.what());
+        WriteString(environment, STDERR, "\n");
+    }
+}
+
+static void _AddUDF_mustache_render(Environment*environment)
+{
+    char returnCode[] = {
+        clips::return_code<clips::integer>::value, 0
+    };
+    char argumentsCode[] = {
+        clips::argument_code<clips::string>::value,
+        clips::argument_code<clips::symbol>::value, ';', 0
+    };
+    AddUDF(environment, "mustache-render", returnCode, 2, 3, argumentsCode,
+           _UDF_mustache_render, "_UDF_mustache_render", nullptr);
+}
+
+
 void mustache_initialize(Environment*environment)
 {
     clips::user_function<__LINE__>(environment, "mustache-trim",    mustache_trim);
-    clips::user_function<__LINE__>(environment, "mustache-render",  mustache_render);
-    clips::user_function<__LINE__>(environment, "mustache-render-with-partials",  mustache_render_with_partials);
+//    clips::user_function<__LINE__>(environment, "mustache-render",  mustache_render);
+//    clips::user_function<__LINE__>(environment, "mustache-render-with-partials",  mustache_render_with_partials);
+    _AddUDF_mustache_render(environment);
 }
 
 }// namespace clips::extension {
