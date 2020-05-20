@@ -72,6 +72,11 @@ void test_benchmark()
 {
     {
         clips::CLIPS CLIPS;
+        BOOST_TEST_NOT(CompleteCommand(""));
+        BOOST_TEST_NOT(CompleteCommand("\n"));
+        BOOST_TEST_NOT(CompleteCommand("\n\n"));
+        BOOST_TEST_NOT(CompleteCommand("\n\n\n"));
+        
         BOOST_TEST_NOT(CompleteCommand("?A"));
         BOOST_TEST_NOT(CompleteCommand("\n\n\n?A"));
         BOOST_TEST(    CompleteCommand(      "?A\n\n\n"));
@@ -940,6 +945,9 @@ void _zeromq_make_session(Environment*environment, std::shared_ptr<zmq::socket_t
                 }
                 
             } catch (const std::exception&e) {
+                static char message[1024] = "";
+                gensprintf(message, "[ZMQ]: Throw while write [%s] to router [%s]: ", str, logicalName);
+                WriteString(environment, STDERR, message);
                 WriteString(environment, STDERR, e.what());
                 WriteString(environment, STDERR, "\n");
             }
@@ -947,7 +955,6 @@ void _zeromq_make_session(Environment*environment, std::shared_ptr<zmq::socket_t
         auto RouterReadFunction = [](Environment *environment,const char *logicalName,void *context)->int {
             auto session = static_cast<zeromqData::Session*>(context);
             try {
-                
                 if (0 == session->buffer_recv.size()) {
                     zmq::message_t message;
                     if (auto n = session->socket->recv(message); *n >0 ) {
@@ -955,12 +962,13 @@ void _zeromq_make_session(Environment*environment, std::shared_ptr<zmq::socket_t
                         os.write(static_cast<char*>(message.data()), *n);
                     }
                 }
-                
             } catch (const std::exception&e) {
+                static char message[1024] = "";
+                gensprintf(message, "[ZMQ]: Throw while read from router [%s]: ", logicalName);
+                WriteString(environment, STDERR, message);
                 WriteString(environment, STDERR, e.what());
                 WriteString(environment, STDERR, "\n");
             }
-            
             std::istream is(&session->buffer_recv);
             return is.get();
         };
