@@ -1116,7 +1116,7 @@ static void zeromq_poll(Environment*environment, const char* KEY)
     }
 }
 
-static clips::boolean zeromq_poll_has_message(Environment*environment, const char* KEY, const char*ROUTER)
+static clips::boolean zeromq_poll_router_has_message(Environment*environment, const char* KEY, const char*ROUTER)
 {
     try {
         const auto& session = ZeromqData(environment)->session_map.at(ROUTER);
@@ -1180,7 +1180,7 @@ void zeromq_initialize(Environment*environment)
     
     _AddUDF_zeromq_poll_create(environment); // zmq-poll-create
     clips::user_function<__LINE__>(environment, "zmq-poll",                         zeromq_poll);
-    clips::user_function<__LINE__>(environment, "zmq-poll-has-message",             zeromq_poll_has_message);
+    clips::user_function<__LINE__>(environment, "zmq-poll-router-has-message",      zeromq_poll_router_has_message);
     clips::user_function<__LINE__>(environment, "zmq-poll-routers-with-message",    zeromq_poll_routers_with_message);
     
 }
