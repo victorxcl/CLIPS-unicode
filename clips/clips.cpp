@@ -352,16 +352,16 @@ void test_benchmark()
 
 namespace clips::extension {
 
-clips::string utility_read_sexp(Environment*environment, const char*logicalName)
+clips::string utility_read_command(Environment*environment, const char*logicalName)
 {
-    std::string sexp;
-    while(!CompleteCommand(sexp.c_str())) {
+    std::string command;
+    while(!CompleteCommand(command.c_str())) {
         int inchar = ReadRouter(environment, logicalName);
         if (EOF == inchar)
             break;
-        sexp += inchar;
+        command += inchar;
     }
-    return clips::string{sexp};
+    return clips::string{command};
 }
 
 clips::string utility_read_json(Environment*environment, const char*logicalName)
@@ -662,12 +662,12 @@ static void _AddUDF_utility_json_set_value_for_path(Environment*environment)
 
 void utility_initialize(Environment*environment)
 {
-    clips::user_function<__LINE__>(environment, "read-sexp",  utility_read_sexp);
-    clips::user_function<__LINE__>(environment, "read-json",  utility_read_json);
-    clips::user_function<__LINE__>(environment, "read-until", utility_read_until);
+    clips::user_function<__LINE__>(environment, "read-command", utility_read_command);
+    clips::user_function<__LINE__>(environment, "read-json",    utility_read_json);
+    clips::user_function<__LINE__>(environment, "read-until",   utility_read_until);
     
-    clips::user_function<__LINE__>(environment, "max-integer", utility_max_integer);
-    clips::user_function<__LINE__>(environment, "min-integer", utility_min_integer);
+    clips::user_function<__LINE__>(environment, "max-integer",  utility_max_integer);
+    clips::user_function<__LINE__>(environment, "min-integer",  utility_min_integer);
     
     clips::user_function<__LINE__>(environment, "uuidgen", utility_uuidgen);
     
@@ -899,11 +899,7 @@ struct zeromqData {
     struct Session {
         std::string                     router;
         std::shared_ptr<zmq::socket_t>  socket;
-        boost::asio::streambuf          buffer_recv;
-        boost::asio::streambuf          buffer_send;
-        enum class Protocol {
-            RAW, JSON, SEXP
-        } protocol { Protocol::SEXP };
+        boost::asio::streambuf          buffer; // 接收缓冲区
     };
     std::unordered_map<std::string, std::shared_ptr<Session>    >   session_map;
     std::unordered_map<std::string, std::vector<zmq::pollitem_t>>   pollitems_map;
@@ -925,25 +921,9 @@ void _zeromq_make_session(Environment*environment, std::shared_ptr<zmq::socket_t
             return logicalName == session->router;
         };
         auto RouterWriteFunction = [](Environment *environment, const char *logicalName, const char *str, void *context){
-            auto session = static_cast<zeromqData::Session*>(context);
             try {
-                std::ostream os(&session->buffer_send);
-                os << str;
-                
-                auto command = boost::asio::buffer_cast<const char*>(session->buffer_send.data());
-                auto command_size = session->buffer_send.size();
-                
-                /*  */ if (zeromqData::Session::Protocol::RAW == session->protocol) {
-                    session->socket->send(zmq::const_buffer(command, command_size), zmq::send_flags::dontwait);
-                    session->buffer_send.consume(command_size);
-                } else if (zeromqData::Session::Protocol::SEXP == session->protocol && CompleteCommand(command)) {
-                    session->socket->send(zmq::const_buffer(command, command_size), zmq::send_flags::dontwait);
-                    session->buffer_send.consume(command_size);
-                } else if (zeromqData::Session::Protocol::JSON == session->protocol && nlohmann::json::accept(command)) {
-                    session->socket->send(zmq::const_buffer(command, command_size), zmq::send_flags::dontwait);
-                    session->buffer_send.consume(command_size);
-                }
-                
+                auto session = static_cast<zeromqData::Session*>(context);
+                session->socket->send(zmq::const_buffer(str, std::strlen(str)), zmq::send_flags::dontwait);
             } catch (const std::exception&e) {
                 static char message[1024] = "";
                 gensprintf(message, "[ZMQ]: Throw while write [%s] to router [%s]: ", str, logicalName);
@@ -955,10 +935,10 @@ void _zeromq_make_session(Environment*environment, std::shared_ptr<zmq::socket_t
         auto RouterReadFunction = [](Environment *environment,const char *logicalName,void *context)->int {
             auto session = static_cast<zeromqData::Session*>(context);
             try {
-                if (0 == session->buffer_recv.size()) {
+                if (0 == session->buffer.size()) {
                     zmq::message_t message;
                     if (auto n = session->socket->recv(message); *n >0 ) {
-                        std::ostream os(&session->buffer_recv);
+                        std::ostream os(&session->buffer);
                         os.write(static_cast<char*>(message.data()), *n);
                     }
                 }
@@ -969,13 +949,13 @@ void _zeromq_make_session(Environment*environment, std::shared_ptr<zmq::socket_t
                 WriteString(environment, STDERR, e.what());
                 WriteString(environment, STDERR, "\n");
             }
-            std::istream is(&session->buffer_recv);
+            std::istream is(&session->buffer);
             return is.get();
         };
         auto RouterUnreadFunction =[](Environment *environment,const char *logicalName,int inchar,void *context)->int {
             auto session = static_cast<zeromqData::Session*>(context);
 
-            std::istream is(&session->buffer_recv);
+            std::istream is(&session->buffer);
             is.putback(inchar);
             
             return static_cast<int>(true);
@@ -1179,57 +1159,6 @@ static clips::multifield zeromq_poll_routers_with_message(Environment*environmen
     return multifield;
 }
 
-
-clips::symbol zeromq_protocol(Environment*environment, const char*ROUTER, const char*PROTOCOL)
-{
-    const char*protocol_last = "unknown";
-    try {
-        auto session = ZeromqData(environment)->session_map.at(ROUTER);
-                                                                                                        
-        /*  */ if (zeromqData::Session::Protocol::SEXP == session->protocol) {
-            protocol_last = "clips";
-        } else if (zeromqData::Session::Protocol::JSON  == session->protocol) {
-            protocol_last = "json";
-        } else if (zeromqData::Session::Protocol::RAW  == session->protocol) {
-            protocol_last = "raw";
-        }
-                                                                                                        
-        /*  */ if (0 == std::strcmp(PROTOCOL, "sexp")) {
-            session->protocol = zeromqData::Session::Protocol::SEXP;
-        } else if (0 == std::strcmp(PROTOCOL, "json")) {
-            session->protocol = zeromqData::Session::Protocol::JSON;
-        } else if (0 == std::strcmp(PROTOCOL, "raw")) {
-            session->protocol = zeromqData::Session::Protocol::RAW;
-        } else {
-            throw std::invalid_argument("\nERROR:\n\t zeromq protocol only support: sexp, json, raw\n");
-        }
-                                                                                                        
-    } catch (const std::exception&e) {
-        WriteString(environment, STDERR, e.what());
-        WriteString(environment, STDERR, "\n");
-    }
-    return clips::symbol{ protocol_last };
-}
-
-#define ZEROMQ_PEEK_BUFFER(send)                                                            \
-/**/clips::string zeromq_peek_##send##_buffer(Environment*environment, const char*ROUTER)   \
-/**/{                                                                                       \
-/**/    const char* content = "";                                                           \
-/**/    try{                                                                                \
-/**/        auto session = ZeromqData(environment)->session_map.at(ROUTER);                 \
-/**/        content = boost::asio::buffer_cast<const char*>(session->buffer_##send.data()); \
-/**/    } catch (const std::exception&e) {                                                  \
-/**/        WriteString(environment, STDERR, e.what());                                     \
-/**/        WriteString(environment, STDERR, "\n");                                         \
-/**/    }                                                                                   \
-/**/    return clips::string{content};                                                      \
-/**/}                                                                                       \
-
-ZEROMQ_PEEK_BUFFER(send)
-ZEROMQ_PEEK_BUFFER(recv)
-
-#undef ZEROMQ_PEEK_BUFFER
-
 clips::symbol zeromq_version(Environment*environment)
 {
     return clips::symbol{std::to_string(ZMQ_VERSION)};
@@ -1247,9 +1176,6 @@ void zeromq_initialize(Environment*environment)
     clips::user_function<__LINE__>(environment, "zmq-bind",             zeromq_bind);
     clips::user_function<__LINE__>(environment, "zmq-connect",          zeromq_connect);
     clips::user_function<__LINE__>(environment, "zmq-close",            zeromq_close);
-    clips::user_function<__LINE__>(environment, "zmq-protocol",         zeromq_protocol);
-    clips::user_function<__LINE__>(environment, "zmq-peek-send-buffer", zeromq_peek_send_buffer);
-    clips::user_function<__LINE__>(environment, "zmq-peek-recv-buffer", zeromq_peek_recv_buffer);
     clips::user_function<__LINE__>(environment, "zmq-version",          zeromq_version);
     
     _AddUDF_zeromq_poll_create(environment); // zmq-poll-create
