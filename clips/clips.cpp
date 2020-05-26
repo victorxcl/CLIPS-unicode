@@ -600,24 +600,27 @@ static void _UDF_utility_json_set_value_for_path(Environment*environment, UDFCon
         nlohmann::json* json = static_cast<nlohmann::json*>(pointer.externalAddressValue->contents);
         nlohmann::json_pointer pointer = nlohmann::json::json_pointer(key.lexemeValue->contents);
         nlohmann::json&json_target = json->operator[](pointer);
-            
-        /*  */ if (STRING_TYPE == value.header->type) {
-            if (auto&&tmp = nlohmann::json::parse(value.lexemeValue->contents); tmp.is_object() or tmp.is_array()) {
-                json_target = tmp;
-            } else {
+        auto try_parse_value_as_json = [&json_target, &value]() {
+            try {
+                if (auto&&tmp = nlohmann::json::parse(value.lexemeValue->contents);
+                    tmp.is_object() or tmp.is_array())
+                {
+                    json_target = tmp;
+                }
+            } catch (const std::exception&) {
                 json_target = value.lexemeValue->contents;
             }
+        };
+            
+        /*  */ if (STRING_TYPE == value.header->type) {
+            try_parse_value_as_json();
         } else if (SYMBOL_TYPE == value.header->type) {
             /*  */ if (TrueSymbol(environment) == value.lexemeValue) {
                 json_target = true;
             } else if (FalseSymbol(environment) == value.lexemeValue) {
                 json_target = false;
             } else {
-                if (auto&&tmp = nlohmann::json::parse(value.lexemeValue->contents); tmp.is_object() or tmp.is_array()) {
-                    json_target = tmp;
-                } else {
-                    json_target = value.lexemeValue->contents;
-                }
+                try_parse_value_as_json();
             }
         } else if (FLOAT_TYPE == value.header->type) {
             json_target = value.floatValue->contents;
