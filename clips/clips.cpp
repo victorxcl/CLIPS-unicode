@@ -176,6 +176,49 @@ void test_benchmark()
                 BOOST_TEST_EQ(clips::string{"Hello, World, TRUE, FALSE"}, std::any_cast<clips::string>(joined));
             }
         }
+        {
+            {
+                BOOST_TEST_EQ(clips::boolean{true}, std::any_cast<clips::boolean>(CLIPS.eval(u8R"((lexeme-starts-with  HelloWorld   Hello ))")));
+                BOOST_TEST_EQ(clips::boolean{true}, std::any_cast<clips::boolean>(CLIPS.eval(u8R"((lexeme-starts-with  HelloWorld  "Hello"))")));
+                BOOST_TEST_EQ(clips::boolean{true}, std::any_cast<clips::boolean>(CLIPS.eval(u8R"((lexeme-starts-with "HelloWorld" "Hello"))")));
+                BOOST_TEST_EQ(clips::boolean{true}, std::any_cast<clips::boolean>(CLIPS.eval(u8R"((lexeme-starts-with "HelloWorld"  Hello ))")));
+                
+                BOOST_TEST_EQ(clips::boolean{true}, std::any_cast<clips::boolean>(CLIPS.eval(u8R"((lexeme-istarts-with  HelloWorld   helLo ))")));
+                BOOST_TEST_EQ(clips::boolean{true}, std::any_cast<clips::boolean>(CLIPS.eval(u8R"((lexeme-istarts-with  HelloWorld  "helLo"))")));
+                BOOST_TEST_EQ(clips::boolean{true}, std::any_cast<clips::boolean>(CLIPS.eval(u8R"((lexeme-istarts-with "HelloWorld" "helLo"))")));
+                BOOST_TEST_EQ(clips::boolean{true}, std::any_cast<clips::boolean>(CLIPS.eval(u8R"((lexeme-istarts-with "HelloWorld"  helLo ))")));
+            }
+            {
+                BOOST_TEST_EQ(clips::boolean{true}, std::any_cast<clips::boolean>(CLIPS.eval(u8R"((lexeme-ends-with  HelloWorld   World ))")));
+                BOOST_TEST_EQ(clips::boolean{true}, std::any_cast<clips::boolean>(CLIPS.eval(u8R"((lexeme-ends-with  HelloWorld  "World"))")));
+                BOOST_TEST_EQ(clips::boolean{true}, std::any_cast<clips::boolean>(CLIPS.eval(u8R"((lexeme-ends-with "HelloWorld" "World"))")));
+                BOOST_TEST_EQ(clips::boolean{true}, std::any_cast<clips::boolean>(CLIPS.eval(u8R"((lexeme-ends-with "HelloWorld"  World ))")));
+                
+                BOOST_TEST_EQ(clips::boolean{true}, std::any_cast<clips::boolean>(CLIPS.eval(u8R"((lexeme-iends-with  HelloWorld   worLd ))")));
+                BOOST_TEST_EQ(clips::boolean{true}, std::any_cast<clips::boolean>(CLIPS.eval(u8R"((lexeme-iends-with  HelloWorld  "worLd"))")));
+                BOOST_TEST_EQ(clips::boolean{true}, std::any_cast<clips::boolean>(CLIPS.eval(u8R"((lexeme-iends-with "HelloWorld" "worLd"))")));
+                BOOST_TEST_EQ(clips::boolean{true}, std::any_cast<clips::boolean>(CLIPS.eval(u8R"((lexeme-iends-with "HelloWorld"  worLd ))")));
+            }
+            {
+                BOOST_TEST_EQ(clips::boolean{true}, std::any_cast<clips::boolean>(CLIPS.eval(u8R"((lexeme-contains  HelloWorld   Wor ))")));
+                BOOST_TEST_EQ(clips::boolean{true}, std::any_cast<clips::boolean>(CLIPS.eval(u8R"((lexeme-contains  HelloWorld  "Wor"))")));
+                BOOST_TEST_EQ(clips::boolean{true}, std::any_cast<clips::boolean>(CLIPS.eval(u8R"((lexeme-contains "HelloWorld" "Wor"))")));
+                BOOST_TEST_EQ(clips::boolean{true}, std::any_cast<clips::boolean>(CLIPS.eval(u8R"((lexeme-contains "HelloWorld"  Wor ))")));
+                
+                BOOST_TEST_EQ(clips::boolean{true}, std::any_cast<clips::boolean>(CLIPS.eval(u8R"((lexeme-icontains  HelloWorld   woR ))")));
+                BOOST_TEST_EQ(clips::boolean{true}, std::any_cast<clips::boolean>(CLIPS.eval(u8R"((lexeme-icontains  HelloWorld  "woR"))")));
+                BOOST_TEST_EQ(clips::boolean{true}, std::any_cast<clips::boolean>(CLIPS.eval(u8R"((lexeme-icontains "HelloWorld" "woR"))")));
+                BOOST_TEST_EQ(clips::boolean{true}, std::any_cast<clips::boolean>(CLIPS.eval(u8R"((lexeme-icontains "HelloWorld"  woR ))")));
+            }
+            {
+                BOOST_TEST_EQ(clips::boolean{false}, std::any_cast<clips::boolean>(CLIPS.eval(u8R"((lexeme-starts-with  "HelloWorld" Good))")));
+                BOOST_TEST_EQ(clips::boolean{false}, std::any_cast<clips::boolean>(CLIPS.eval(u8R"((lexeme-istarts-with "HelloWorld" Good))")));
+                BOOST_TEST_EQ(clips::boolean{false}, std::any_cast<clips::boolean>(CLIPS.eval(u8R"((lexeme-ends-with    "HelloWorld" Good))")));
+                BOOST_TEST_EQ(clips::boolean{false}, std::any_cast<clips::boolean>(CLIPS.eval(u8R"((lexeme-iends-with   "HelloWorld" Good))")));
+                BOOST_TEST_EQ(clips::boolean{false}, std::any_cast<clips::boolean>(CLIPS.eval(u8R"((lexeme-contains     "HelloWorld" Good))")));
+                BOOST_TEST_EQ(clips::boolean{false}, std::any_cast<clips::boolean>(CLIPS.eval(u8R"((lexeme-icontains    "HelloWorld" Good))")));
+            }
+        }
     }
 #if CLIPS_EXTENSION_UTILITY_ENABLED
     {
@@ -495,6 +538,31 @@ clips::string utility_str_join(Environment*environment, const clips::multifield&
     return clips::string{_utility_string_join(environment, m, sep)};
 }
 
+clips::boolean utility_lexeme_starts_with(Environment*environment, const char*input, const char* with)
+{
+    return clips::boolean{boost::algorithm::starts_with(input, with)};
+}
+clips::boolean utility_lexeme_istarts_with(Environment*environment, const char*input, const char* with)
+{
+    return clips::boolean{boost::algorithm::istarts_with(input, with)};
+}
+clips::boolean utility_lexeme_ends_with(Environment*environment, const char*input, const char* with)
+{
+    return clips::boolean{boost::algorithm::ends_with(input, with)};
+}
+clips::boolean utility_lexeme_iends_with(Environment*environment, const char*input, const char* with)
+{
+    return clips::boolean{boost::algorithm::iends_with(input, with)};
+}
+clips::boolean utility_lexeme_contains(Environment*environment, const char*input, const char* with)
+{
+    return clips::boolean{boost::algorithm::contains(input, with)};
+}
+clips::boolean utility_lexeme_icontains(Environment*environment, const char*input, const char* with)
+{
+    return clips::boolean{boost::algorithm::icontains(input, with)};
+}
+
 void utility_sleep_seconds(Environment*environment, clips::integer n)
 {
     std::this_thread::sleep_for(std::chrono::seconds(n));
@@ -719,6 +787,13 @@ void utility_initialize(Environment*environment)
     
     clips::user_function<__LINE__>(environment, "sym-join$", utility_sym_join);
     clips::user_function<__LINE__>(environment, "str-join$", utility_str_join);
+    
+    clips::user_function<__LINE__>(environment, "lexeme-starts-with",   utility_lexeme_starts_with);
+    clips::user_function<__LINE__>(environment, "lexeme-istarts-with",  utility_lexeme_istarts_with);
+    clips::user_function<__LINE__>(environment, "lexeme-ends-with",     utility_lexeme_ends_with);
+    clips::user_function<__LINE__>(environment, "lexeme-iends-with",    utility_lexeme_iends_with);
+    clips::user_function<__LINE__>(environment, "lexeme-contains",      utility_lexeme_contains);
+    clips::user_function<__LINE__>(environment, "lexeme-icontains",     utility_lexeme_icontains);
     
     clips::user_function<__LINE__>(environment, "sleep-seconds",      utility_sleep_seconds);
     clips::user_function<__LINE__>(environment, "sleep-milliseconds", utility_sleep_milliseconds);
