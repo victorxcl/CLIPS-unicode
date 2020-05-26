@@ -88,7 +88,8 @@ namespace clips {
     template<typename T>using   return_code = type_code<T>;
     template<typename T>using argument_code = type_code<T>;
 
-    template<typename>struct argument;
+    template<typename T>struct argument;
+    template<typename T>struct primitive_value;
 #define CLIPS_ARGUMENT_VALUE(float, udfv_contents)                              \
 /**/    static float value(Environment*CLIPS, UDFContext *udfc, unsigned i){    \
 /**/        UDFValue udfv;                                                      \
@@ -98,6 +99,11 @@ namespace clips {
 #define CLIPS_ARGUMENT_TEMPLATE(float, udfv_contents)                           \
 /**/    template<>struct argument<float> {                                      \
 /**/        CLIPS_ARGUMENT_VALUE(float, udfv_contents)                          \
+/**/    };                                                                      \
+/**/    template<>struct primitive_value<float> {                               \
+/**/        static float apply(Environment*CLIPS, const CLIPSValue&udfv) {      \
+/**/            return udfv_contents;                                           \
+/**/        }                                                                   \
 /**/    };/* CLIPS_ARGUMENT_TEMPLATE */
 
     CLIPS_ARGUMENT_TEMPLATE(             float, /*                      */udfv.floatValue->contents)
@@ -113,21 +119,65 @@ namespace clips {
     CLIPS_ARGUMENT_TEMPLATE(unsigned      long, /*                      */udfv.integerValue->contents)
     CLIPS_ARGUMENT_TEMPLATE(unsigned long long, /*                      */udfv.integerValue->contents)
 
-
     CLIPS_ARGUMENT_TEMPLATE(              bool,               udfv.lexemeValue != FalseSymbol(CLIPS))
-//    CLIPS_ARGUMENT_TEMPLATE(           boolean,       boolean{udfv.lexemeValue->contents})
+//  CLIPS_ARGUMENT_TEMPLATE(           boolean,       boolean{udfv.lexemeValue->contents})
     CLIPS_ARGUMENT_TEMPLATE(       const char*,               udfv.lexemeValue->contents )
     CLIPS_ARGUMENT_TEMPLATE(       std::string,   std::string{udfv.lexemeValue->contents})
     CLIPS_ARGUMENT_TEMPLATE(            string,        string{udfv.lexemeValue->contents})
     CLIPS_ARGUMENT_TEMPLATE(            symbol,        symbol{udfv.lexemeValue->contents})
     CLIPS_ARGUMENT_TEMPLATE(     instance_name, instance_name{udfv.lexemeValue->contents})
-        
+
+    template<>struct primitive_value<clips::multifield> {
+        static clips::multifield apply(Environment*CLIPS, const UDFValue&udfv) {
+            clips::multifield multifield;
+            for (int i=0; i<udfv.multifieldValue->length; i++) {
+                CLIPSValue&v = udfv.multifieldValue->contents[i];
+                /*  */ if (v.header->type == FLOAT_TYPE) {
+                    auto&&x = primitive_value<clips::real>::apply(CLIPS, v);
+                    multifield.push_back(x);
+                } else if (v.header->type == INTEGER_TYPE) {
+                    auto&&x = primitive_value<clips::integer>::apply(CLIPS, v);
+                    multifield.push_back(x);
+                } else if (v.header->type == SYMBOL_TYPE) {
+                    auto&&x = primitive_value<clips::symbol>::apply(CLIPS, v);
+                    multifield.push_back(x);
+                } else if (v.header->type == STRING_TYPE) {
+                    auto&&x = primitive_value<clips::string>::apply(CLIPS, v);
+                    multifield.push_back(x);
+                } else if (v.header->type == INSTANCE_NAME_TYPE) {
+                    auto&&x = primitive_value<clips::instance_name>::apply(CLIPS, v);
+                    multifield.push_back(x);
+                }
+            }
+            return multifield;
+        }
+    };
+
+    template<>struct argument<clips::multifield> {
+        static clips::multifield value(Environment*CLIPS, UDFContext *udfc, unsigned i){
+            UDFValue udfv;
+            UDFNthArgument(udfc, i, argument_code<clips::multifield>::expect_bits, &udfv);
+            return primitive_value<clips::multifield>::apply(CLIPS, udfv);
+        }
+    };
+
     template<class T>struct argument<T*> {
         CLIPS_ARGUMENT_VALUE(T*, static_cast<T*>(udfv.externalAddressValue->contents));
     };
     template<class T>struct argument<const T> {
-        static const T value(UDFContext *udfc, unsigned i){
+        static const T value(/* Environment*CLIPS, */UDFContext *udfc, unsigned i){
             return argument<T>::value(udfc, i);
+        }
+        static const T value(   Environment*CLIPS,   UDFContext *udfc, unsigned i){
+            return argument<T>::value(CLIPS, udfc, i);
+        }
+    };
+    template<typename T>struct argument<T&> {
+        static T value(/* Environment*CLIPS, */UDFContext *udfc, unsigned i){
+            return argument<T>::value(udfc, i);
+        }
+        static T value(   Environment*CLIPS,   UDFContext *udfc, unsigned i){
+            return argument<T>::value(CLIPS, udfc, i);
         }
     };
 #undef CLIPS_ARGUMENT_VALUE

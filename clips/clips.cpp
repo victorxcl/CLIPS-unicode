@@ -115,8 +115,8 @@ void test_benchmark()
             
             BOOST_TEST_EQ("*;sy"s, (clips::build_arguments_code<void,        char*>::apply(argumentsCode, 1)));
             BOOST_TEST_EQ("*;sy"s, (clips::build_arguments_code<void,  const char*>::apply(argumentsCode, 1)));
-            BOOST_TEST_EQ("*;e"s, (clips::build_arguments_code<void,        void*>::apply(argumentsCode, 1)));
-            BOOST_TEST_EQ("*;e"s, (clips::build_arguments_code<void, std::string*>::apply(argumentsCode, 1)));
+            BOOST_TEST_EQ("*;e"s, (clips::build_arguments_code<void,         void*>::apply(argumentsCode, 1)));
+            BOOST_TEST_EQ("*;e"s, (clips::build_arguments_code<void,  std::string*>::apply(argumentsCode, 1)));
             
             BOOST_TEST_EQ("*;b"s, (clips::build_arguments_code<void,       clips::boolean>::apply(argumentsCode, 1)));
             BOOST_TEST_EQ("*;s"s, (clips::build_arguments_code<void,        clips::string>::apply(argumentsCode, 1)));
@@ -165,6 +165,16 @@ void test_benchmark()
             BOOST_TEST_EQ(clips::integer    {1}, std::any_cast<clips::integer>(multifield.at(2)));
             BOOST_TEST_EQ(clips::real     {2.5}, std::any_cast<clips::real   >(multifield.at(3)));
             BOOST_TEST_EQ(clips::boolean {true}, std::any_cast<clips::boolean>(multifield.at(4)));
+        }
+        {
+            {
+                auto&&joined = std::any_cast<clips::symbol>(CLIPS.eval(u8R"((sym-join$ (create$ Hello "World" TRUE FALSE) ", "))"));
+                BOOST_TEST_EQ(clips::symbol{"Hello, World, TRUE, FALSE"}, std::any_cast<clips::symbol>(joined));
+            }
+            {
+                auto&&joined = std::any_cast<clips::string>(CLIPS.eval(u8R"((str-join$ (create$ Hello "World" TRUE FALSE) ", "))"));
+                BOOST_TEST_EQ(clips::string{"Hello, World, TRUE, FALSE"}, std::any_cast<clips::string>(joined));
+            }
         }
     }
 #if CLIPS_EXTENSION_UTILITY_ENABLED
@@ -349,6 +359,7 @@ void test_benchmark()
 #include <boost/uuid/uuid.hpp>
 #include <boost/uuid/uuid_io.hpp>
 #include <boost/uuid/uuid_generators.hpp>
+#include <boost/algorithm/string/join.hpp>
 
 namespace clips::extension {
 
@@ -450,6 +461,38 @@ clips::symbol utility_uuidgen(Environment*environment)
 {
     boost::uuids::uuid uuid = boost::uuids::random_generator()();
     return clips::symbol{boost::uuids::to_string(uuid)};
+}
+
+static std::string _utility_string_join(Environment*environment, const clips::multifield&m, const char* sep)
+{
+    std::vector<std::string> vs;
+    for (auto&&v:m) {
+        /*  */ if (typeid(clips::symbol) == v.type()) {
+            vs.push_back(std::get<0>(std::any_cast<clips::symbol>(v)));
+        } else if (typeid(clips::string) == v.type()) {
+            vs.push_back(std::get<0>(std::any_cast<clips::string>(v)));
+        } else {
+            WriteString(environment, STDERR, "ERROR: in xxx-join$ expect element with type [STRING] or [SYMBOL], but got: ");
+            /*  */ if (typeid(clips::integer) == v.type()) {
+                Writeln(environment, std::to_string(std::any_cast<clips::integer>(v)).c_str());
+            } else if (typeid(clips::real) == v.type()) {
+                Writeln(environment, std::to_string(std::any_cast<clips::real>(v)).c_str());
+            } else if (typeid(clips::boolean) == v.type()) {
+                Writeln(environment, std::to_string(std::any_cast<clips::boolean>(v)).c_str());
+            } else {
+                Writeln(environment, "unknown data in multifield");
+            }
+        }
+    }
+    return boost::algorithm::join(vs, sep);
+}
+clips::symbol utility_sym_join(Environment*environment, const clips::multifield&m, const char* sep)
+{
+    return clips::symbol{_utility_string_join(environment, m, sep)};
+}
+clips::string utility_str_join(Environment*environment, const clips::multifield&m, const char* sep)
+{
+    return clips::string{_utility_string_join(environment, m, sep)};
 }
 
 void utility_sleep_seconds(Environment*environment, clips::integer n)
@@ -674,6 +717,9 @@ void utility_initialize(Environment*environment)
     
     clips::user_function<__LINE__>(environment, "uuidgen", utility_uuidgen);
     
+    clips::user_function<__LINE__>(environment, "sym-join$", utility_sym_join);
+    clips::user_function<__LINE__>(environment, "str-join$", utility_str_join);
+    
     clips::user_function<__LINE__>(environment, "sleep-seconds",      utility_sleep_seconds);
     clips::user_function<__LINE__>(environment, "sleep-milliseconds", utility_sleep_milliseconds);
     clips::user_function<__LINE__>(environment, "sleep-microseconds", utility_sleep_microseconds);
@@ -681,7 +727,6 @@ void utility_initialize(Environment*environment)
     
     //clips::user_function<__LINE__>(environment, "expand-for-eval", utility_expand_for_eval);
     //clips::user_function<__LINE__>(environment, "expand-and-eval", utility_expand_and_eval);
-    
     
     clips::user_function<__LINE__>(environment, "json-validate",    utility_json_validate);
 
