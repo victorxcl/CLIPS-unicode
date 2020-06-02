@@ -1,4 +1,54 @@
-Graphviz - Graph Drawing Programs from AT&T Research and Lucent Bell Labs
+vim: autoindent expandtab
 
-See doc/build.html for prerequisites and detailed build notes.
+1. Thinker系列的app所依赖的库
+
+2. 添加子树
+export iCloud="/Users/pandaxcl/Library/Mobile Documents/com~apple~CloudDocs"
+
+git subtree add --squash --prefix=lib3rd/rxcpp.git              https://github.com/ReactiveX/RxCpp.git          master
+git subtree add --squash --prefix=lib3rd/catch2.git             https://github.com/catchorg/Catch2.git          master
+git subtree add --squash --prefix=lib3rd/cppcoro.git            https://github.com/lewissbaker/cppcoro.git      master
+git subtree add --squash --prefix=lib3rd/cpplinq.git            https://github.com/mrange/cpplinq.git           master
+git subtree add --squash --prefix=lib3rd/cppzmq.git             https://github.com/zeromq/cppzmq.git            master
+git subtree add --squash --prefix=lib3rd/libzmq.git             https://github.com/zeromq/libzmq.git            master
+git subtree add --squash --prefix=lib3rd/rpclib.git             https://github.com/rpclib/rpclib.git            master
+git subtree add --squash --prefix=lib3rd/fmt.git                https://github.com/fmtlib/fmt.git               master
+git subtree add --squash --prefix=lib3rd/yoga.git               https://github.com/facebook/yoga.git            master
+git subtree add --squash --prefix=lib3rd/cucumber-cpp.git       https://github.com/cucumber/cucumber-cpp.git    master
+git subtree add --squash --prefix=lib3rd/rttr.git               https://github.com/rttrorg/rttr.git             master
+git subtree add --squash --prefix=lib3rd/grpc.git               https://github.com/grpc/grpc.git                master
+git subtree add --squash --prefix=lib3rd/mstch.git              https://github.com/no1msd/mstch.git             master
+git subtree add --squash --prefix=lib3rd/nlohmann-json.git      https://github.com/nlohmann/json.git            master
+git subtree add --squash --prefix=lib3rd/graphviz.git           https://gitlab.com/graphviz/graphviz.git        master
+git subtree add --squash --prefix=lib3rd/clips_core_6_40.git    $iCloud/xcl.gift/Self.gift/CLIPS-unicode.git    clips_core_6_40
+git subtree add --squash --prefix=lib3rd/clips_uml.git          $iCloud/xcl.gift/Self.gift/CLIPS-unicode.git    clips_uml
+
+
+
+3. 添加子模块
+export iCloud="/Users/pandaxcl/Library/Mobile Documents/com~apple~CloudDocs"
+
+git submodule add -b master             https://github.com/ReactiveX/RxCpp.git          lib3rd/submodule/rxcpp.git
+git submodule add -b master             https://github.com/catchorg/Catch2.git          lib3rd/submodule/catch2.git
+git submodule add -b master             https://github.com/lewissbaker/cppcoro.git      lib3rd/submodule/cppcoro.git
+git submodule add -b master             https://github.com/mrange/cpplinq.git           lib3rd/submodule/cpplinq.git
+git submodule add -b master             https://github.com/zeromq/cppzmq.git            lib3rd/submodule/cppzmq.git
+git submodule add -b master             https://github.com/zeromq/libzmq.git            lib3rd/submodule/libzmq.git
+git submodule add -b master             https://github.com/rpclib/rpclib.git            lib3rd/submodule/rpclib.git
+git submodule add -b master             https://github.com/fmtlib/fmt.git               lib3rd/submodule/fmt.git
+git submodule add -b master             https://github.com/facebook/yoga.git            lib3rd/submodule/yoga.git
+git submodule add -b master             https://github.com/cucumber/cucumber-cpp.git    lib3rd/submodule/cucumber-cpp.git
+git submodule add -b master             https://github.com/rttrorg/rttr.git             lib3rd/submodule/rttr.git
+git submodule add -b master             https://github.com/grpc/grpc.git                lib3rd/submodule/grpc.git
+git submodule add -b master             https://github.com/no1msd/mstch.git             lib3rd/submodule/mstch.git
+git submodule add -b master             https://github.com/nlohmann/json.git            lib3rd/submodule/nlohmann-json.git
+git submodule add -b master             https://gitlab.com/graphviz/graphviz.git        lib3rd/submodule/graphviz.git
+git submodule add -b clips_core_6_40    $iCloud/xcl.gift/Self.gift/CLIPS-unicode.git    lib3rd/submodule/clips_core_6_40.git
+git submodule add -b clips_uml          $iCloud/xcl.gift/Self.gift/CLIPS-unicode.git    lib3rd/submodule/clips_uml.git
+
+
+4. 更新所有的submodule的submodule，以及子子孙孙
+git submodule update --init --recursive
+
+
 
