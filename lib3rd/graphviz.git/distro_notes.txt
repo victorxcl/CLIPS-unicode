@@ -1,0 +1,4 @@
+Fedora maintainer: Patrick "Jima" Laughton <jima@beer.tclug.org>
+Debian maintainer: Cyril Brulebois <cyril.brulebois@enst-bretagne.fr>
+SUSE maintainer:   Christian Vögl <cvoegl@suse.de>
+
