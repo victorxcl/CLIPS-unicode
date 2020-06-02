@@ -72,6 +72,11 @@ void test_benchmark()
 {
     {
         clips::CLIPS CLIPS;
+        BOOST_TEST_NOT(CompleteCommand(""));
+        BOOST_TEST_NOT(CompleteCommand("\n"));
+        BOOST_TEST_NOT(CompleteCommand("\n\n"));
+        BOOST_TEST_NOT(CompleteCommand("\n\n\n"));
+        
         BOOST_TEST_NOT(CompleteCommand("?A"));
         BOOST_TEST_NOT(CompleteCommand("\n\n\n?A"));
         BOOST_TEST(    CompleteCommand(      "?A\n\n\n"));
@@ -110,8 +115,8 @@ void test_benchmark()
             
             BOOST_TEST_EQ("*;sy"s, (clips::build_arguments_code<void,        char*>::apply(argumentsCode, 1)));
             BOOST_TEST_EQ("*;sy"s, (clips::build_arguments_code<void,  const char*>::apply(argumentsCode, 1)));
-            BOOST_TEST_EQ("*;e"s, (clips::build_arguments_code<void,        void*>::apply(argumentsCode, 1)));
-            BOOST_TEST_EQ("*;e"s, (clips::build_arguments_code<void, std::string*>::apply(argumentsCode, 1)));
+            BOOST_TEST_EQ("*;e"s, (clips::build_arguments_code<void,         void*>::apply(argumentsCode, 1)));
+            BOOST_TEST_EQ("*;e"s, (clips::build_arguments_code<void,  std::string*>::apply(argumentsCode, 1)));
             
             BOOST_TEST_EQ("*;b"s, (clips::build_arguments_code<void,       clips::boolean>::apply(argumentsCode, 1)));
             BOOST_TEST_EQ("*;s"s, (clips::build_arguments_code<void,        clips::string>::apply(argumentsCode, 1)));
@@ -138,6 +143,82 @@ void test_benchmark()
         BOOST_TEST_EQ(clips::string{"good"}, std::any_cast<clips::string>(CLIPS.eval("(good)")));
         BOOST_TEST_EQ(clips::string{"luck"}, std::any_cast<clips::string>(CLIPS.eval("(luck)")));
         BOOST_TEST_EQ(clips::string{"goodluck"}, std::any_cast<clips::string>(CLIPS.eval("(str-cat (good) (luck))")));
+        
+        {
+            auto&&multifield = std::any_cast<clips::multifield>(CLIPS.eval("(create$ (good) (luck))"));
+            BOOST_TEST_EQ(clips::string{"good"}, std::any_cast<clips::string>(multifield.at(0)));
+            BOOST_TEST_EQ(clips::string{"luck"}, std::any_cast<clips::string>(multifield.at(1)));
+        }
+        {
+            clips::user_function<__LINE__>(CLIPS, "return-multifiled$", static_cast<clips::multifield(*)(Environment*)>([](Environment*){
+                return clips::multifield{
+                    clips::string{"good"},
+                    clips::symbol{"luck"},
+                    clips::integer    {1},
+                    clips::real     {2.5},
+                    clips::boolean {true}
+                };
+            }));
+            const auto&&multifield = std::any_cast<clips::multifield>(CLIPS.eval("(return-multifiled$)"));
+            BOOST_TEST_EQ(clips::string{"good"}, std::any_cast<clips::string >(multifield.at(0)));
+            BOOST_TEST_EQ(clips::symbol{"luck"}, std::any_cast<clips::symbol >(multifield.at(1)));
+            BOOST_TEST_EQ(clips::integer    {1}, std::any_cast<clips::integer>(multifield.at(2)));
+            BOOST_TEST_EQ(clips::real     {2.5}, std::any_cast<clips::real   >(multifield.at(3)));
+            BOOST_TEST_EQ(clips::boolean {true}, std::any_cast<clips::boolean>(multifield.at(4)));
+        }
+        {
+            {
+                auto&&joined = std::any_cast<clips::symbol>(CLIPS.eval(u8R"((sym-join$ (create$ Hello "World" TRUE FALSE) ", "))"));
+                BOOST_TEST_EQ(clips::symbol{"Hello, World, TRUE, FALSE"}, std::any_cast<clips::symbol>(joined));
+            }
+            {
+                auto&&joined = std::any_cast<clips::string>(CLIPS.eval(u8R"((str-join$ (create$ Hello "World" TRUE FALSE) ", "))"));
+                BOOST_TEST_EQ(clips::string{"Hello, World, TRUE, FALSE"}, std::any_cast<clips::string>(joined));
+            }
+        }
+        {
+            {
+                BOOST_TEST_EQ(clips::boolean{true}, std::any_cast<clips::boolean>(CLIPS.eval(u8R"((lexeme-starts-with  HelloWorld   Hello ))")));
+                BOOST_TEST_EQ(clips::boolean{true}, std::any_cast<clips::boolean>(CLIPS.eval(u8R"((lexeme-starts-with  HelloWorld  "Hello"))")));
+                BOOST_TEST_EQ(clips::boolean{true}, std::any_cast<clips::boolean>(CLIPS.eval(u8R"((lexeme-starts-with "HelloWorld" "Hello"))")));
+                BOOST_TEST_EQ(clips::boolean{true}, std::any_cast<clips::boolean>(CLIPS.eval(u8R"((lexeme-starts-with "HelloWorld"  Hello ))")));
+                
+                BOOST_TEST_EQ(clips::boolean{true}, std::any_cast<clips::boolean>(CLIPS.eval(u8R"((lexeme-istarts-with  HelloWorld   helLo ))")));
+                BOOST_TEST_EQ(clips::boolean{true}, std::any_cast<clips::boolean>(CLIPS.eval(u8R"((lexeme-istarts-with  HelloWorld  "helLo"))")));
+                BOOST_TEST_EQ(clips::boolean{true}, std::any_cast<clips::boolean>(CLIPS.eval(u8R"((lexeme-istarts-with "HelloWorld" "helLo"))")));
+                BOOST_TEST_EQ(clips::boolean{true}, std::any_cast<clips::boolean>(CLIPS.eval(u8R"((lexeme-istarts-with "HelloWorld"  helLo ))")));
+            }
+            {
+                BOOST_TEST_EQ(clips::boolean{true}, std::any_cast<clips::boolean>(CLIPS.eval(u8R"((lexeme-ends-with  HelloWorld   World ))")));
+                BOOST_TEST_EQ(clips::boolean{true}, std::any_cast<clips::boolean>(CLIPS.eval(u8R"((lexeme-ends-with  HelloWorld  "World"))")));
+                BOOST_TEST_EQ(clips::boolean{true}, std::any_cast<clips::boolean>(CLIPS.eval(u8R"((lexeme-ends-with "HelloWorld" "World"))")));
+                BOOST_TEST_EQ(clips::boolean{true}, std::any_cast<clips::boolean>(CLIPS.eval(u8R"((lexeme-ends-with "HelloWorld"  World ))")));
+                
+                BOOST_TEST_EQ(clips::boolean{true}, std::any_cast<clips::boolean>(CLIPS.eval(u8R"((lexeme-iends-with  HelloWorld   worLd ))")));
+                BOOST_TEST_EQ(clips::boolean{true}, std::any_cast<clips::boolean>(CLIPS.eval(u8R"((lexeme-iends-with  HelloWorld  "worLd"))")));
+                BOOST_TEST_EQ(clips::boolean{true}, std::any_cast<clips::boolean>(CLIPS.eval(u8R"((lexeme-iends-with "HelloWorld" "worLd"))")));
+                BOOST_TEST_EQ(clips::boolean{true}, std::any_cast<clips::boolean>(CLIPS.eval(u8R"((lexeme-iends-with "HelloWorld"  worLd ))")));
+            }
+            {
+                BOOST_TEST_EQ(clips::boolean{true}, std::any_cast<clips::boolean>(CLIPS.eval(u8R"((lexeme-contains  HelloWorld   Wor ))")));
+                BOOST_TEST_EQ(clips::boolean{true}, std::any_cast<clips::boolean>(CLIPS.eval(u8R"((lexeme-contains  HelloWorld  "Wor"))")));
+                BOOST_TEST_EQ(clips::boolean{true}, std::any_cast<clips::boolean>(CLIPS.eval(u8R"((lexeme-contains "HelloWorld" "Wor"))")));
+                BOOST_TEST_EQ(clips::boolean{true}, std::any_cast<clips::boolean>(CLIPS.eval(u8R"((lexeme-contains "HelloWorld"  Wor ))")));
+                
+                BOOST_TEST_EQ(clips::boolean{true}, std::any_cast<clips::boolean>(CLIPS.eval(u8R"((lexeme-icontains  HelloWorld   woR ))")));
+                BOOST_TEST_EQ(clips::boolean{true}, std::any_cast<clips::boolean>(CLIPS.eval(u8R"((lexeme-icontains  HelloWorld  "woR"))")));
+                BOOST_TEST_EQ(clips::boolean{true}, std::any_cast<clips::boolean>(CLIPS.eval(u8R"((lexeme-icontains "HelloWorld" "woR"))")));
+                BOOST_TEST_EQ(clips::boolean{true}, std::any_cast<clips::boolean>(CLIPS.eval(u8R"((lexeme-icontains "HelloWorld"  woR ))")));
+            }
+            {
+                BOOST_TEST_EQ(clips::boolean{false}, std::any_cast<clips::boolean>(CLIPS.eval(u8R"((lexeme-starts-with  "HelloWorld" Good))")));
+                BOOST_TEST_EQ(clips::boolean{false}, std::any_cast<clips::boolean>(CLIPS.eval(u8R"((lexeme-istarts-with "HelloWorld" Good))")));
+                BOOST_TEST_EQ(clips::boolean{false}, std::any_cast<clips::boolean>(CLIPS.eval(u8R"((lexeme-ends-with    "HelloWorld" Good))")));
+                BOOST_TEST_EQ(clips::boolean{false}, std::any_cast<clips::boolean>(CLIPS.eval(u8R"((lexeme-iends-with   "HelloWorld" Good))")));
+                BOOST_TEST_EQ(clips::boolean{false}, std::any_cast<clips::boolean>(CLIPS.eval(u8R"((lexeme-contains     "HelloWorld" Good))")));
+                BOOST_TEST_EQ(clips::boolean{false}, std::any_cast<clips::boolean>(CLIPS.eval(u8R"((lexeme-icontains    "HelloWorld" Good))")));
+            }
+        }
     }
 #if CLIPS_EXTENSION_UTILITY_ENABLED
     {
@@ -321,19 +402,20 @@ void test_benchmark()
 #include <boost/uuid/uuid.hpp>
 #include <boost/uuid/uuid_io.hpp>
 #include <boost/uuid/uuid_generators.hpp>
+#include <boost/algorithm/string/join.hpp>
 
 namespace clips::extension {
 
-clips::string utility_read_sexp(Environment*environment, const char*logicalName)
+clips::string utility_read_command(Environment*environment, const char*logicalName)
 {
-    std::string sexp;
-    while(!CompleteCommand(sexp.c_str())) {
+    std::string command;
+    while(!CompleteCommand(command.c_str())) {
         int inchar = ReadRouter(environment, logicalName);
         if (EOF == inchar)
             break;
-        sexp += inchar;
+        command += inchar;
     }
-    return clips::string{sexp};
+    return clips::string{command};
 }
 
 clips::string utility_read_json(Environment*environment, const char*logicalName)
@@ -424,6 +506,63 @@ clips::symbol utility_uuidgen(Environment*environment)
     return clips::symbol{boost::uuids::to_string(uuid)};
 }
 
+static std::string _utility_string_join(Environment*environment, const clips::multifield&m, const char* sep)
+{
+    std::vector<std::string> vs;
+    for (auto&&v:m) {
+        /*  */ if (typeid(clips::symbol) == v.type()) {
+            vs.push_back(std::get<0>(std::any_cast<clips::symbol>(v)));
+        } else if (typeid(clips::string) == v.type()) {
+            vs.push_back(std::get<0>(std::any_cast<clips::string>(v)));
+        } else {
+            WriteString(environment, STDERR, "ERROR: in xxx-join$ expect element with type [STRING] or [SYMBOL], but got: ");
+            /*  */ if (typeid(clips::integer) == v.type()) {
+                Writeln(environment, std::to_string(std::any_cast<clips::integer>(v)).c_str());
+            } else if (typeid(clips::real) == v.type()) {
+                Writeln(environment, std::to_string(std::any_cast<clips::real>(v)).c_str());
+            } else if (typeid(clips::boolean) == v.type()) {
+                Writeln(environment, std::to_string(std::any_cast<clips::boolean>(v)).c_str());
+            } else {
+                Writeln(environment, "unknown data in multifield");
+            }
+        }
+    }
+    return boost::algorithm::join(vs, sep);
+}
+clips::symbol utility_sym_join(Environment*environment, const clips::multifield&m, const char* sep)
+{
+    return clips::symbol{_utility_string_join(environment, m, sep)};
+}
+clips::string utility_str_join(Environment*environment, const clips::multifield&m, const char* sep)
+{
+    return clips::string{_utility_string_join(environment, m, sep)};
+}
+
+clips::boolean utility_lexeme_starts_with(Environment*environment, const char*input, const char* with)
+{
+    return clips::boolean{boost::algorithm::starts_with(input, with)};
+}
+clips::boolean utility_lexeme_istarts_with(Environment*environment, const char*input, const char* with)
+{
+    return clips::boolean{boost::algorithm::istarts_with(input, with)};
+}
+clips::boolean utility_lexeme_ends_with(Environment*environment, const char*input, const char* with)
+{
+    return clips::boolean{boost::algorithm::ends_with(input, with)};
+}
+clips::boolean utility_lexeme_iends_with(Environment*environment, const char*input, const char* with)
+{
+    return clips::boolean{boost::algorithm::iends_with(input, with)};
+}
+clips::boolean utility_lexeme_contains(Environment*environment, const char*input, const char* with)
+{
+    return clips::boolean{boost::algorithm::contains(input, with)};
+}
+clips::boolean utility_lexeme_icontains(Environment*environment, const char*input, const char* with)
+{
+    return clips::boolean{boost::algorithm::icontains(input, with)};
+}
+
 void utility_sleep_seconds(Environment*environment, clips::integer n)
 {
     std::this_thread::sleep_for(std::chrono::seconds(n));
@@ -487,7 +626,7 @@ clips::external_address utility_json_merge_patch(Environment*environment, nlohma
 }
 
 // void*pointer, const char*KEY, const char*DEFAULT
-static void utility_json_value_for_path(Environment*environment, UDFContext *context, UDFValue*out)
+static void _UDF_utility_json_value_for_path(Environment*environment, UDFContext *context, UDFValue*out)
 {
     UDFValue pointer, key;
     
@@ -550,10 +689,10 @@ static void _AddUDF_utility_json_value_for_path(Environment*environment)
         clips::argument_code<clips::symbol >::value, 0
     };
     AddUDF(environment, "json-value-for-path", returnCode, 2, 3, argumentsCode,
-           utility_json_value_for_path, "utility_json_value_for_path", nullptr);
+           _UDF_utility_json_value_for_path, "_UDF_utility_json_value_for_path", nullptr);
 }
 
-static void utility_json_set_value_for_path(Environment*environment, UDFContext *context, UDFValue*out)
+static void _UDF_utility_json_set_value_for_path(Environment*environment, UDFContext *context, UDFValue*out)
 {
     UDFValue pointer, key, value;
     
@@ -572,24 +711,27 @@ static void utility_json_set_value_for_path(Environment*environment, UDFContext 
         nlohmann::json* json = static_cast<nlohmann::json*>(pointer.externalAddressValue->contents);
         nlohmann::json_pointer pointer = nlohmann::json::json_pointer(key.lexemeValue->contents);
         nlohmann::json&json_target = json->operator[](pointer);
-            
-        /*  */ if (STRING_TYPE == value.header->type) {
-            if (auto&&tmp = nlohmann::json::parse(value.lexemeValue->contents); tmp.is_object() or tmp.is_array()) {
-                json_target = tmp;
-            } else {
+        auto try_parse_value_as_json = [&json_target, &value]() {
+            try {
+                if (auto&&tmp = nlohmann::json::parse(value.lexemeValue->contents);
+                    tmp.is_object() or tmp.is_array())
+                {
+                    json_target = tmp;
+                }
+            } catch (const std::exception&) {
                 json_target = value.lexemeValue->contents;
             }
+        };
+            
+        /*  */ if (STRING_TYPE == value.header->type) {
+            try_parse_value_as_json();
         } else if (SYMBOL_TYPE == value.header->type) {
             /*  */ if (TrueSymbol(environment) == value.lexemeValue) {
                 json_target = true;
             } else if (FalseSymbol(environment) == value.lexemeValue) {
                 json_target = false;
             } else {
-                if (auto&&tmp = nlohmann::json::parse(value.lexemeValue->contents); tmp.is_object() or tmp.is_array()) {
-                    json_target = tmp;
-                } else {
-                    json_target = value.lexemeValue->contents;
-                }
+                try_parse_value_as_json();
             }
         } else if (FLOAT_TYPE == value.header->type) {
             json_target = value.floatValue->contents;
@@ -629,19 +771,29 @@ static void _AddUDF_utility_json_set_value_for_path(Environment*environment)
         clips::argument_code<clips::symbol >::value, 0
     };
     AddUDF(environment, "json-set-value-for-path", returnCode, 3, 3, argumentsCode,
-           utility_json_set_value_for_path, "utility_json_set_value_for_path", nullptr);
+           _UDF_utility_json_set_value_for_path, "_UDF_utility_json_set_value_for_path", nullptr);
 }
 
 void utility_initialize(Environment*environment)
 {
-    clips::user_function<__LINE__>(environment, "read-sexp",  utility_read_sexp);
-    clips::user_function<__LINE__>(environment, "read-json",  utility_read_json);
-    clips::user_function<__LINE__>(environment, "read-until", utility_read_until);
+    clips::user_function<__LINE__>(environment, "read-command", utility_read_command);
+    clips::user_function<__LINE__>(environment, "read-json",    utility_read_json);
+    clips::user_function<__LINE__>(environment, "read-until",   utility_read_until);
     
-    clips::user_function<__LINE__>(environment, "max-integer", utility_max_integer);
-    clips::user_function<__LINE__>(environment, "min-integer", utility_min_integer);
+    clips::user_function<__LINE__>(environment, "max-integer",  utility_max_integer);
+    clips::user_function<__LINE__>(environment, "min-integer",  utility_min_integer);
     
     clips::user_function<__LINE__>(environment, "uuidgen", utility_uuidgen);
+    
+    clips::user_function<__LINE__>(environment, "sym-join$", utility_sym_join);
+    clips::user_function<__LINE__>(environment, "str-join$", utility_str_join);
+    
+    clips::user_function<__LINE__>(environment, "lexeme-starts-with",   utility_lexeme_starts_with);
+    clips::user_function<__LINE__>(environment, "lexeme-istarts-with",  utility_lexeme_istarts_with);
+    clips::user_function<__LINE__>(environment, "lexeme-ends-with",     utility_lexeme_ends_with);
+    clips::user_function<__LINE__>(environment, "lexeme-iends-with",    utility_lexeme_iends_with);
+    clips::user_function<__LINE__>(environment, "lexeme-contains",      utility_lexeme_contains);
+    clips::user_function<__LINE__>(environment, "lexeme-icontains",     utility_lexeme_icontains);
     
     clips::user_function<__LINE__>(environment, "sleep-seconds",      utility_sleep_seconds);
     clips::user_function<__LINE__>(environment, "sleep-milliseconds", utility_sleep_milliseconds);
@@ -650,7 +802,6 @@ void utility_initialize(Environment*environment)
     
     //clips::user_function<__LINE__>(environment, "expand-for-eval", utility_expand_for_eval);
     //clips::user_function<__LINE__>(environment, "expand-and-eval", utility_expand_and_eval);
-    
     
     clips::user_function<__LINE__>(environment, "json-validate",    utility_json_validate);
 
@@ -871,13 +1022,10 @@ struct zeromqData {
     struct Session {
         std::string                     router;
         std::shared_ptr<zmq::socket_t>  socket;
-        boost::asio::streambuf          buffer_recv;
-        boost::asio::streambuf          buffer_send;
-        enum class Protocol {
-            RAW, JSON, SEXP
-        } protocol { Protocol::SEXP };
+        boost::asio::streambuf          buffer; // 接收缓冲区
     };
-    std::unordered_map<std::string, std::shared_ptr<Session>>   session_list;
+    std::unordered_map<std::string, std::shared_ptr<Session>    >   session_map;
+    std::unordered_map<std::string, std::vector<zmq::pollitem_t>>   pollitems_map;
 };
 
 #define ZEROMQ_DATA                USER_ENVIRONMENT_DATA + 2
@@ -888,7 +1036,7 @@ void _zeromq_make_session(Environment*environment, std::shared_ptr<zmq::socket_t
     auto session = std::make_shared<zeromqData::Session>();
     session->router = ROUTER;
     session->socket = socket;
-    ZeromqData(environment)->session_list[ROUTER] = session;
+    ZeromqData(environment)->session_map[ROUTER] = session;
     
     /* prepare router for network */{
         auto RouterQueryFunction = [](Environment *environment, const char *logicalName, void *context) {
@@ -896,26 +1044,13 @@ void _zeromq_make_session(Environment*environment, std::shared_ptr<zmq::socket_t
             return logicalName == session->router;
         };
         auto RouterWriteFunction = [](Environment *environment, const char *logicalName, const char *str, void *context){
-            auto session = static_cast<zeromqData::Session*>(context);
             try {
-                std::ostream os(&session->buffer_send);
-                os << str;
-                
-                auto command = boost::asio::buffer_cast<const char*>(session->buffer_send.data());
-                auto command_size = session->buffer_send.size();
-                
-                /*  */ if (zeromqData::Session::Protocol::RAW == session->protocol) {
-                    session->socket->send(zmq::const_buffer(command, command_size), zmq::send_flags::dontwait);
-                    session->buffer_send.consume(command_size);
-                } else if (zeromqData::Session::Protocol::SEXP == session->protocol && CompleteCommand(command)) {
-                    session->socket->send(zmq::const_buffer(command, command_size), zmq::send_flags::dontwait);
-                    session->buffer_send.consume(command_size);
-                } else if (zeromqData::Session::Protocol::JSON == session->protocol && nlohmann::json::accept(command)) {
-                    session->socket->send(zmq::const_buffer(command, command_size), zmq::send_flags::dontwait);
-                    session->buffer_send.consume(command_size);
-                }
-                
+                auto session = static_cast<zeromqData::Session*>(context);
+                session->socket->send(zmq::const_buffer(str, std::strlen(str)), zmq::send_flags::dontwait);
             } catch (const std::exception&e) {
+                static char message[1024] = "";
+                gensprintf(message, "[ZMQ]: Throw while write [%s] to router [%s]: ", str, logicalName);
+                WriteString(environment, STDERR, message);
                 WriteString(environment, STDERR, e.what());
                 WriteString(environment, STDERR, "\n");
             }
@@ -923,27 +1058,27 @@ void _zeromq_make_session(Environment*environment, std::shared_ptr<zmq::socket_t
         auto RouterReadFunction = [](Environment *environment,const char *logicalName,void *context)->int {
             auto session = static_cast<zeromqData::Session*>(context);
             try {
-                
-                if (0 == session->buffer_recv.size()) {
+                if (0 == session->buffer.size()) {
                     zmq::message_t message;
                     if (auto n = session->socket->recv(message); *n >0 ) {
-                        std::ostream os(&session->buffer_recv);
+                        std::ostream os(&session->buffer);
                         os.write(static_cast<char*>(message.data()), *n);
                     }
                 }
-                
             } catch (const std::exception&e) {
+                static char message[1024] = "";
+                gensprintf(message, "[ZMQ]: Throw while read from router [%s]: ", logicalName);
+                WriteString(environment, STDERR, message);
                 WriteString(environment, STDERR, e.what());
                 WriteString(environment, STDERR, "\n");
             }
-            
-            std::istream is(&session->buffer_recv);
+            std::istream is(&session->buffer);
             return is.get();
         };
         auto RouterUnreadFunction =[](Environment *environment,const char *logicalName,int inchar,void *context)->int {
             auto session = static_cast<zeromqData::Session*>(context);
 
-            std::istream is(&session->buffer_recv);
+            std::istream is(&session->buffer);
             is.putback(inchar);
             
             return static_cast<int>(true);
@@ -990,7 +1125,13 @@ zmq::socket_type _zeromq_socket_type_from_string(const char*SOCKET_TYPE)
     else {
         throw std::invalid_argument("\nERROR:\tzeromq socket type only support: \n\n"
                                     "\treq, rep, dealer, router, pub, sub, xpub, xsub, push, pull,\n"
-                                    "\tserver, client, radio, dish, stream, pair\n");
+#if defined(ZMQ_BUILD_DRAFT_API) && ZMQ_VERSION >= ZMQ_MAKE_VERSION(4, 2, 0)
+                                    "\tserver, client, radio, dish,\n"
+#endif
+#if ZMQ_VERSION_MAJOR >= 4
+                                    "\tstream,\n"
+#endif
+                                    "\tpair\n");
     }
     
     return socket_type;
@@ -1032,7 +1173,7 @@ void zeromq_connect(Environment*environment, const char* ROUTER, const char* ADD
 void zeromq_close(Environment*environment, const char* ROUTER)
 {
     try {
-        auto session = ZeromqData(environment)->session_list.at(ROUTER);
+        auto session = ZeromqData(environment)->session_map.at(ROUTER);
         session->socket = nullptr;
         
     } catch (const std::exception& e) {
@@ -1041,55 +1182,105 @@ void zeromq_close(Environment*environment, const char* ROUTER)
     }
 }
 
-clips::symbol zeromq_protocol(Environment*environment, const char*ROUTER, const char*PROTOCOL)
+static void _UDF_zeromq_poll_create(Environment*environment, UDFContext *context, UDFValue*out)
 {
-    const char*protocol_last = "unknown";
     try {
-        auto session = ZeromqData(environment)->session_list.at(ROUTER);
-                                                                                                        
-        /*  */ if (zeromqData::Session::Protocol::SEXP == session->protocol) {
-            protocol_last = "clips";
-        } else if (zeromqData::Session::Protocol::JSON  == session->protocol) {
-            protocol_last = "json";
-        } else if (zeromqData::Session::Protocol::RAW  == session->protocol) {
-            protocol_last = "raw";
+        std::string                  key;
+        std::vector<zmq::pollitem_t> items;
+        
+        constexpr auto expect_bits = clips::argument_code<clips::string>::expect_bits|
+        /*                        */ clips::argument_code<clips::symbol>::expect_bits;
+        
+        {
+            UDFValue value;
+            UDFFirstArgument(context, expect_bits, &value);
+            key = std::string(value.lexemeValue->contents, value.lexemeValue->count);
         }
-                                                                                                        
-        /*  */ if (0 == std::strcmp(PROTOCOL, "sexp")) {
-            session->protocol = zeromqData::Session::Protocol::SEXP;
-        } else if (0 == std::strcmp(PROTOCOL, "json")) {
-            session->protocol = zeromqData::Session::Protocol::JSON;
-        } else if (0 == std::strcmp(PROTOCOL, "raw")) {
-            session->protocol = zeromqData::Session::Protocol::RAW;
-        } else {
-            throw std::invalid_argument("\nERROR:\n\t zeromq protocol only support: sexp, json, raw\n");
+        
+        while(UDFHasNextArgument(context)) {
+            UDFValue value;
+            UDFNextArgument(context, expect_bits, &value);
+            std::string router(value.lexemeValue->contents, value.lexemeValue->count);
+            auto session = ZeromqData(environment)->session_map.at(router);
+            items.push_back({static_cast<void*>(session->socket.get()), 0, ZMQ_POLLIN, 0});
         }
-                                                                                                        
-    } catch (const std::exception&e) {
+        
+        ZeromqData(environment)->pollitems_map[key] = items;
+    } catch (const std::exception& e) {
         WriteString(environment, STDERR, e.what());
         WriteString(environment, STDERR, "\n");
     }
-    return clips::symbol{ protocol_last };
 }
 
-#define ZEROMQ_PEEK_BUFFER(send)                                                            \
-/**/clips::string zeromq_peek_##send##_buffer(Environment*environment, const char*ROUTER)   \
-/**/{                                                                                       \
-/**/    const char* content = "";                                                           \
-/**/    try{                                                                                \
-/**/        auto session = ZeromqData(environment)->session_list.at(ROUTER);                \
-/**/        content = boost::asio::buffer_cast<const char*>(session->buffer_##send.data()); \
-/**/    } catch (const std::exception&e) {                                                  \
-/**/        WriteString(environment, STDERR, e.what());                                     \
-/**/        WriteString(environment, STDERR, "\n");                                         \
-/**/    }                                                                                   \
-/**/    return clips::string{content};                                                      \
-/**/}                                                                                       \
+static void _AddUDF_zeromq_poll_create(Environment*environment)
+{
+    char returnCode[] = {
+        clips::return_code<clips::integer>::value, 0
+    };
+    char argumentsCode[] = {
+        clips::argument_code<clips::string>::value,
+        clips::argument_code<clips::symbol>::value, ';',
+        
+        clips::argument_code<clips::string>::value,
+        clips::argument_code<clips::symbol>::value, ';', 0
+    };
+    AddUDF(environment, "zmq-poll-create", returnCode, 2, UNBOUNDED, argumentsCode,
+           _UDF_zeromq_poll_create, "_UDF_zeromq_poll_create", nullptr);
+}
 
-ZEROMQ_PEEK_BUFFER(send)
-ZEROMQ_PEEK_BUFFER(recv)
+static void zeromq_poll(Environment*environment, const char* KEY)
+{
+    try {
+        auto& items = ZeromqData(environment)->pollitems_map.at(KEY);
+        zmq::poll(items);
+    } catch (const std::exception& e) {
+        WriteString(environment, STDERR, e.what());
+        WriteString(environment, STDERR, "\n");
+    }
+}
 
-#undef ZEROMQ_PEEK_BUFFER
+static clips::boolean zeromq_poll_router_has_message(Environment*environment, const char* KEY, const char*ROUTER)
+{
+    try {
+        const auto& session = ZeromqData(environment)->session_map.at(ROUTER);
+        const auto&   items = ZeromqData(environment)->pollitems_map.at(KEY);
+        for (auto&&item : items) {
+            if (item.socket == session->socket.get()) {
+                if (item.revents & ZMQ_POLLIN) {
+                    return clips::boolean{true};
+                }
+            }
+        }
+    } catch (const std::exception& e) {
+        WriteString(environment, STDERR, e.what());
+        WriteString(environment, STDERR, "\n");
+    }
+    
+    return clips::boolean{false};
+}
+
+static clips::multifield zeromq_poll_routers_with_message(Environment*environment, const char* KEY)
+{
+    clips::multifield multifield;
+    try {
+        std::unordered_map<void*, std::string> to_router;
+        for (auto&&[router, session] : ZeromqData(environment)->session_map) {
+            to_router[session->socket.get()] = router;
+        }
+        const auto&   items = ZeromqData(environment)->pollitems_map.at(KEY);
+        for (auto&&item : items) {
+            if (item.revents & ZMQ_POLLIN) {
+                std::string router = to_router.at(item.socket);
+                multifield.push_back(clips::symbol{router});
+            }
+        }
+    } catch (const std::exception& e) {
+        WriteString(environment, STDERR, e.what());
+        WriteString(environment, STDERR, "\n");
+    }
+    
+    return multifield;
+}
 
 clips::symbol zeromq_version(Environment*environment)
 {
@@ -1108,10 +1299,13 @@ void zeromq_initialize(Environment*environment)
     clips::user_function<__LINE__>(environment, "zmq-bind",             zeromq_bind);
     clips::user_function<__LINE__>(environment, "zmq-connect",          zeromq_connect);
     clips::user_function<__LINE__>(environment, "zmq-close",            zeromq_close);
-    clips::user_function<__LINE__>(environment, "zmq-protocol",         zeromq_protocol);
-    clips::user_function<__LINE__>(environment, "zmq-peek-send-buffer", zeromq_peek_send_buffer);
-    clips::user_function<__LINE__>(environment, "zmq-peek-recv-buffer", zeromq_peek_recv_buffer);
     clips::user_function<__LINE__>(environment, "zmq-version",          zeromq_version);
+    
+    _AddUDF_zeromq_poll_create(environment); // zmq-poll-create
+    clips::user_function<__LINE__>(environment, "zmq-poll",                         zeromq_poll);
+    clips::user_function<__LINE__>(environment, "zmq-poll-router-has-message",      zeromq_poll_router_has_message);
+    clips::user_function<__LINE__>(environment, "zmq-poll-routers-with-message",    zeromq_poll_routers_with_message);
+    
 }
 
 }// namespace clips::extension {
@@ -1215,11 +1409,63 @@ clips::string mustache_render_with_partials(Environment*environment, const char*
     return clips::string{""};
 }
 
+static void _UDF_mustache_render(Environment*environment, UDFContext *context, UDFValue*out)
+{
+    try {
+        std::string VIEW;
+        std::string CONTEXT;
+        std::string PARTIALS;
+        constexpr auto expect_bits = clips::argument_code<clips::string>::expect_bits|
+        /*                        */ clips::argument_code<clips::symbol>::expect_bits;
+        
+        {
+            UDFValue value;
+            UDFFirstArgument(context, expect_bits, &value);
+            VIEW = std::string(value.lexemeValue->contents, value.lexemeValue->count);
+        }
+        {
+            UDFValue value;
+            UDFNextArgument(context, expect_bits, &value);
+            CONTEXT = std::string(value.lexemeValue->contents, value.lexemeValue->count);
+        }
+        
+        clips::string result;
+        if(UDFHasNextArgument(context)) {
+            UDFValue value;
+            UDFNextArgument(context, expect_bits, &value);
+            PARTIALS = std::string(value.lexemeValue->contents, value.lexemeValue->count);
+            result = mustache_render_with_partials(environment, VIEW.c_str(), CONTEXT.c_str(), PARTIALS.c_str());
+        } else {
+            result = mustache_render(environment, VIEW.c_str(), CONTEXT.c_str());
+        }
+        
+        out->lexemeValue = CreateString(environment, std::get<0>(result).c_str());
+    } catch (const std::exception& e) {
+        WriteString(environment, STDERR, e.what());
+        WriteString(environment, STDERR, "\n");
+    }
+}
+
+static void _AddUDF_mustache_render(Environment*environment)
+{
+    char returnCode[] = {
+        clips::return_code<clips::integer>::value, 0
+    };
+    char argumentsCode[] = {
+        clips::argument_code<clips::string>::value,
+        clips::argument_code<clips::symbol>::value, ';', 0
+    };
+    AddUDF(environment, "mustache-render", returnCode, 2, 3, argumentsCode,
+           _UDF_mustache_render, "_UDF_mustache_render", nullptr);
+}
+
+
 void mustache_initialize(Environment*environment)
 {
     clips::user_function<__LINE__>(environment, "mustache-trim",    mustache_trim);
-    clips::user_function<__LINE__>(environment, "mustache-render",  mustache_render);
-    clips::user_function<__LINE__>(environment, "mustache-render-with-partials",  mustache_render_with_partials);
+//    clips::user_function<__LINE__>(environment, "mustache-render",  mustache_render);
+//    clips::user_function<__LINE__>(environment, "mustache-render-with-partials",  mustache_render_with_partials);
+    _AddUDF_mustache_render(environment);
 }
 
 }// namespace clips::extension {

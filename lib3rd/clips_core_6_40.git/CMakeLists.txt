@@ -362,6 +362,7 @@ target_include_directories(xclips PUBLIC
                           "${PROJECT_SOURCE_DIR}/../cppzmq.git"
                           "${PROJECT_SOURCE_DIR}/../libzmq.git/include"
                           "${PROJECT_SOURCE_DIR}/../mstch.git/include"
+                          "${PROJECT_SOURCE_DIR}/../fmt.git/include"
                           )
 
 set_target_properties(xclips PROPERTIES XCODE_ATTRIBUTE_ENABLE_BITCODE "YES")
