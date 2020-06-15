@@ -500,6 +500,11 @@ clips::integer utility_min_integer(Environment*environment)
     return std::numeric_limits<clips::integer>::min();
 }
 
+clips::symbol utility_newline(Environment*environment)
+{
+    return clips::symbol{"\n"};
+}
+
 clips::symbol utility_uuidgen(Environment*environment)
 {
     boost::uuids::uuid uuid = boost::uuids::random_generator()();
@@ -783,6 +788,7 @@ void utility_initialize(Environment*environment)
     clips::user_function<__LINE__>(environment, "max-integer",  utility_max_integer);
     clips::user_function<__LINE__>(environment, "min-integer",  utility_min_integer);
     
+    clips::user_function<__LINE__>(environment, "newline", utility_newline);
     clips::user_function<__LINE__>(environment, "uuidgen", utility_uuidgen);
     
     clips::user_function<__LINE__>(environment, "sym-join$", utility_sym_join);
@@ -1331,17 +1337,17 @@ void zeromq_initialize(Environment*environment)
     clips::user_function<__LINE__>(environment, "zmq-poll-routers-with-message",    zeromq_poll_routers_with_message);
     
     // Prepare:
-    //(zmq-poll-create items express cucumber)
+    //(zmq-poll-create ITEMS express cucumber)
     
     // Sample 1:
-    //(while TRUE do (zmq-poll items)
-    //    (if (zmq-poll-router-has-message  express) then (read-clips  express))
-    //    (if (zmq-poll-router-has-message cucumber) then (read-clips cucumber)))
+    //(while TRUE do (zmq-poll ITEMS)
+    //    (if (zmq-poll-router-has-message  express) then (read-command  express))
+    //    (if (zmq-poll-router-has-message cucumber) then (read-command cucumber)))
     
     // Sample 2:
-    //(while TRUE do (zmq-poll items)
+    //(while TRUE do (zmq-poll ITEMS)
     //(progn$ (router (zmq-poll-routers-with-message))
-    //    (do-something (read-clips router)))
+    //    (do-something (read-command router)))
 }
 
 }// namespace clips::extension {
