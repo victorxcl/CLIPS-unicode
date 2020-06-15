@@ -1259,7 +1259,7 @@ static clips::boolean zeromq_poll_router_has_message(Environment*environment, co
         const auto& session = ZeromqData(environment)->session_map.at(ROUTER);
         const auto&   items = ZeromqData(environment)->pollitems_map.at(KEY);
         for (auto&&item : items) {
-            if (item.socket == session->socket.get()) {
+            if (item.socket == static_cast<void*>(*session->socket)) {
                 if (item.revents & ZMQ_POLLIN) {
                     return clips::boolean{true};
                 }
@@ -1285,7 +1285,7 @@ static clips::multifield zeromq_poll_routers_with_message(Environment*environmen
     try {
         std::unordered_map<void*, std::string> to_router;
         for (auto&&[router, session] : ZeromqData(environment)->session_map) {
-            to_router[session->socket.get()] = router;
+            to_router[static_cast<void*>(*session->socket)] = router;
         }
         const auto& items = ZeromqData(environment)->pollitems_map.at(KEY);
         for (auto&&item : items) {
