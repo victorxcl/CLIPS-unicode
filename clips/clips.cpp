@@ -1148,6 +1148,8 @@ void zeromq_bind(Environment*environment, const char* ROUTER, const char* ADDRES
         socket->bind(ADDRESS);
         
     } catch (const std::exception& e) {
+        WriteString(environment, STDERR, __PRETTY_FUNCTION__);
+        WriteString(environment, STDERR, ": ");
         WriteString(environment, STDERR, e.what());
         WriteString(environment, STDERR, "\n");
     }
@@ -1165,6 +1167,8 @@ void zeromq_connect(Environment*environment, const char* ROUTER, const char* ADD
         socket->connect(ADDRESS);
         
     } catch (const std::exception& e) {
+        WriteString(environment, STDERR, __PRETTY_FUNCTION__);
+        WriteString(environment, STDERR, ": ");
         WriteString(environment, STDERR, e.what());
         WriteString(environment, STDERR, "\n");
     }
@@ -1177,6 +1181,8 @@ void zeromq_close(Environment*environment, const char* ROUTER)
         session->socket = nullptr;
         
     } catch (const std::exception& e) {
+        WriteString(environment, STDERR, __PRETTY_FUNCTION__);
+        WriteString(environment, STDERR, ": ");
         WriteString(environment, STDERR, e.what());
         WriteString(environment, STDERR, "\n");
     }
@@ -1194,19 +1200,23 @@ static void _UDF_zeromq_poll_create(Environment*environment, UDFContext *context
         {
             UDFValue value;
             UDFFirstArgument(context, expect_bits, &value);
-            key = std::string(value.lexemeValue->contents, value.lexemeValue->count);
+            assert(1 == value.lexemeValue->count);
+            key = std::string(value.lexemeValue->contents);
         }
         
         while(UDFHasNextArgument(context)) {
             UDFValue value;
             UDFNextArgument(context, expect_bits, &value);
-            std::string router(value.lexemeValue->contents, value.lexemeValue->count);
+            assert(1 == value.lexemeValue->count);
+            std::string router(value.lexemeValue->contents);
             auto session = ZeromqData(environment)->session_map.at(router);
             items.push_back({static_cast<void*>(session->socket.get()), 0, ZMQ_POLLIN, 0});
         }
         
         ZeromqData(environment)->pollitems_map[key] = items;
     } catch (const std::exception& e) {
+        WriteString(environment, STDERR, __PRETTY_FUNCTION__);
+        WriteString(environment, STDERR, ": ");
         WriteString(environment, STDERR, e.what());
         WriteString(environment, STDERR, "\n");
     }
@@ -1234,7 +1244,11 @@ static void zeromq_poll(Environment*environment, const char* KEY)
         auto& items = ZeromqData(environment)->pollitems_map.at(KEY);
         zmq::poll(items);
     } catch (const std::exception& e) {
+        WriteString(environment, STDERR, __PRETTY_FUNCTION__);
+        WriteString(environment, STDERR, ": ");
         WriteString(environment, STDERR, e.what());
+        WriteString(environment, STDERR, ": ");
+        WriteString(environment, STDERR, KEY);
         WriteString(environment, STDERR, "\n");
     }
 }
@@ -1252,7 +1266,11 @@ static clips::boolean zeromq_poll_router_has_message(Environment*environment, co
             }
         }
     } catch (const std::exception& e) {
+        WriteString(environment, STDERR, __PRETTY_FUNCTION__);
+        WriteString(environment, STDERR, ": ");
         WriteString(environment, STDERR, e.what());
+        WriteString(environment, STDERR, ": ");
+        WriteString(environment, STDERR, KEY);
         WriteString(environment, STDERR, "\n");
     }
     
@@ -1275,7 +1293,11 @@ static clips::multifield zeromq_poll_routers_with_message(Environment*environmen
             }
         }
     } catch (const std::exception& e) {
+        WriteString(environment, STDERR, __PRETTY_FUNCTION__);
+        WriteString(environment, STDERR, ": ");
         WriteString(environment, STDERR, e.what());
+        WriteString(environment, STDERR, ": ");
+        WriteString(environment, STDERR, KEY);
         WriteString(environment, STDERR, "\n");
     }
     
