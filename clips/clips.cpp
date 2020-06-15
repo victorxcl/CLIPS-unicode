@@ -1306,6 +1306,18 @@ void zeromq_initialize(Environment*environment)
     clips::user_function<__LINE__>(environment, "zmq-poll-router-has-message",      zeromq_poll_router_has_message);
     clips::user_function<__LINE__>(environment, "zmq-poll-routers-with-message",    zeromq_poll_routers_with_message);
     
+    // Prepare:
+    //(zmq-poll-create items express cucumber)
+    
+    // Sample 1:
+    //(while TRUE do (zmq-poll items)
+    //    (if (zmq-poll-router-has-message  express) then (read-clips  express))
+    //    (if (zmq-poll-router-has-message cucumber) then (read-clips cucumber)))
+    
+    // Sample 2:
+    //(while TRUE do (zmq-poll items)
+    //(progn$ (router (zmq-poll-routers-with-message))
+    //    (do-something (read-clips router)))
 }
 
 }// namespace clips::extension {
