@@ -1210,7 +1210,7 @@ static void _UDF_zeromq_poll_create(Environment*environment, UDFContext *context
             assert(1 == value.lexemeValue->count);
             std::string router(value.lexemeValue->contents);
             auto session = ZeromqData(environment)->session_map.at(router);
-            items.push_back({static_cast<void*>(session->socket.get()), 0, ZMQ_POLLIN, 0});
+            items.push_back({static_cast<void*>(*session->socket), 0, ZMQ_POLLIN, 0});
         }
         
         ZeromqData(environment)->pollitems_map[key] = items;
@@ -1241,13 +1241,13 @@ static void _AddUDF_zeromq_poll_create(Environment*environment)
 static void zeromq_poll(Environment*environment, const char* KEY)
 {
     try {
-        auto& items = ZeromqData(environment)->pollitems_map.at(KEY);
+        auto&&items = ZeromqData(environment)->pollitems_map.at(KEY);
         zmq::poll(items);
     } catch (const std::exception& e) {
         WriteString(environment, STDERR, __PRETTY_FUNCTION__);
         WriteString(environment, STDERR, ": ");
         WriteString(environment, STDERR, e.what());
-        WriteString(environment, STDERR, ": ");
+        WriteString(environment, STDERR, "! KEY: ");
         WriteString(environment, STDERR, KEY);
         WriteString(environment, STDERR, "\n");
     }
@@ -1269,8 +1269,10 @@ static clips::boolean zeromq_poll_router_has_message(Environment*environment, co
         WriteString(environment, STDERR, __PRETTY_FUNCTION__);
         WriteString(environment, STDERR, ": ");
         WriteString(environment, STDERR, e.what());
-        WriteString(environment, STDERR, ": ");
+        WriteString(environment, STDERR, "! KEY: ");
         WriteString(environment, STDERR, KEY);
+        WriteString(environment, STDERR, ", ROUTER: ");
+        WriteString(environment, STDERR, ROUTER);
         WriteString(environment, STDERR, "\n");
     }
     
@@ -1285,7 +1287,7 @@ static clips::multifield zeromq_poll_routers_with_message(Environment*environmen
         for (auto&&[router, session] : ZeromqData(environment)->session_map) {
             to_router[session->socket.get()] = router;
         }
-        const auto&   items = ZeromqData(environment)->pollitems_map.at(KEY);
+        const auto& items = ZeromqData(environment)->pollitems_map.at(KEY);
         for (auto&&item : items) {
             if (item.revents & ZMQ_POLLIN) {
                 std::string router = to_router.at(item.socket);
@@ -1296,7 +1298,7 @@ static clips::multifield zeromq_poll_routers_with_message(Environment*environmen
         WriteString(environment, STDERR, __PRETTY_FUNCTION__);
         WriteString(environment, STDERR, ": ");
         WriteString(environment, STDERR, e.what());
-        WriteString(environment, STDERR, ": ");
+        WriteString(environment, STDERR, "! KEY: ");
         WriteString(environment, STDERR, KEY);
         WriteString(environment, STDERR, "\n");
     }
