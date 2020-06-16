@@ -1,0 +1,294 @@
+stages:
+    - source
+    - build
+    - test
+    - deploy
+
+portable-source:
+    stage: source
+    tags:
+        - linux
+    image: "graphviz/graphviz:ubuntu-18.04"
+    script:
+        - ./autogen.sh
+        - make dist
+    artifacts:
+        when: on_success
+        expire_in: 1 week
+        paths:
+            - VERSION
+            - COLLECTION
+            - graphviz-*.tar.gz
+    except:
+        - tags
+
+.build_template: &rpm_build_definition
+    stage: build
+    script:
+        - ci/build.sh
+    artifacts:
+        when: on_success
+        expire_in: 1 week
+        paths:
+            - Packages/*/*/*/*/*/*.rpm
+            - Packages/*/*/*/*/*.rpm
+            - Metadata/*/*/*/configure.log
+    except:
+        - tags
+
+.build_template: &deb_build_definition
+    stage: build
+    script:
+        - ci/build.sh
+    artifacts:
+        when: on_success
+        expire_in: 1 week
+        paths:
+            - Packages/*/*/*/*/*/*deb
+            - Packages/*/*/*/*/*.gz
+            - Metadata/*/*/*/configure.log
+    except:
+        - tags
+
+.test_template: &test_definition
+    stage: test
+    script:
+        - ci/test.sh
+    artifacts:
+        reports:
+            junit: ./report.xml
+
+centos6-build:
+    <<: *rpm_build_definition
+    tags:
+        - linux
+    image: "graphviz/graphviz:centos6"
+
+centos7-build:
+    <<: *rpm_build_definition
+    tags:
+        - linux
+    image: "graphviz/graphviz:centos7"
+
+centos8-build:
+    <<: *rpm_build_definition
+    tags:
+        - linux
+    image: "graphviz/graphviz:centos8"
+
+          #fedora27-build:
+          #<<: *rpm_build_definition
+          #tags:
+          #- graphviz,fedora27
+
+          #fedora28-build:
+          #<<: *rpm_build_definition
+          #tags:
+          #- graphviz,fedora28
+
+fedora29-build:
+    <<: *rpm_build_definition
+    tags:
+        - linux
+    image: "graphviz/graphviz:fedora29"
+
+fedora30-build:
+    <<: *rpm_build_definition
+    tags:
+        - linux
+    image: "graphviz/graphviz:fedora30"
+
+fedora31-build:
+    <<: *rpm_build_definition
+    tags:
+        - linux
+    image: "graphviz/graphviz:fedora31"
+
+fedora32-build:
+    <<: *rpm_build_definition
+    tags:
+        - linux
+    image: "graphviz/graphviz:fedora32"
+
+fedora33-build:
+    <<: *rpm_build_definition
+    tags:
+        - linux
+    image: "graphviz/graphviz:fedora33"
+
+ubuntu18-04-build:
+    <<: *deb_build_definition
+    tags:
+        - linux
+    image: "graphviz/graphviz:ubuntu-18.04"
+
+ubuntu19-10-build:
+    <<: *deb_build_definition
+    tags:
+        - linux
+    image: "graphviz/graphviz:ubuntu-19.10"
+
+ubuntu20-04-build:
+    <<: *deb_build_definition
+    tags:
+        - linux
+    image: "graphviz/graphviz:ubuntu-20.04"
+
+meta-data:
+    stage: test
+    script:
+        - CONFIGURE_LOGS=Metadata/*/*/*/configure.log
+        - ci/generate-configuration-table.py --output-format html ${CONFIGURE_LOGS} > configuration-long-no-color.html
+        - ci/generate-configuration-table.py --output-format html --short ${CONFIGURE_LOGS} > configuration-short-no-color.html
+        - ci/generate-configuration-table.py --output-format html --short --color ${CONFIGURE_LOGS} > configuration-short-color-green-red.html
+        - ci/generate-configuration-table.py --output-format html --short --colors black:red ${CONFIGURE_LOGS} > configuration-short-color-red-only.html
+    artifacts:
+        paths:
+            - configuration-*.html
+
+ubuntu18-04-test:
+    <<: *test_definition
+    needs:
+        - job: portable-source
+          artifacts: true
+        - job: "ubuntu18-04-build"
+          artifacts: true
+    tags:
+        - linux
+    image: "graphviz/graphviz:ubuntu-18.04"
+
+ubuntu19-10-test:
+    <<: *test_definition
+    needs:
+        - job: portable-source
+          artifacts: true
+        - job: "ubuntu19-10-build"
+          artifacts: true
+    tags:
+        - linux
+    image: "graphviz/graphviz:ubuntu-19.10"
+
+ubuntu20-04-test:
+    <<: *test_definition
+    needs:
+        - job: portable-source
+          artifacts: true
+        - job: "ubuntu20-04-build"
+          artifacts: true
+    tags:
+        - linux
+    image: "graphviz/graphviz:ubuntu-20.04"
+
+centos6-test:
+    <<: *test_definition
+    needs:
+        - job: portable-source
+          artifacts: true
+        - job: "centos6-build"
+          artifacts: true
+    tags:
+        - linux
+    image: "graphviz/graphviz:centos6"
+
+centos7-test:
+    <<: *test_definition
+    needs:
+        - job: portable-source
+          artifacts: true
+        - job: "centos7-build"
+          artifacts: true
+    tags:
+        - linux
+    image: "graphviz/graphviz:centos7"
+
+centos8-test:
+    <<: *test_definition
+    needs:
+        - job: portable-source
+          artifacts: true
+        - job: "centos8-build"
+          artifacts: true
+    tags:
+        - linux
+    image: "graphviz/graphviz:centos8"
+
+fedora29-test:
+    <<: *test_definition
+    needs:
+        - job: portable-source
+          artifacts: true
+        - job: "fedora29-build"
+          artifacts: true
+    tags:
+        - linux
+    image: "graphviz/graphviz:fedora29"
+
+fedora30-test:
+    <<: *test_definition
+    needs:
+        - job: portable-source
+          artifacts: true
+        - job: "fedora30-build"
+          artifacts: true
+    tags:
+        - linux
+    image: "graphviz/graphviz:fedora30"
+
+fedora31-test:
+    <<: *test_definition
+    needs:
+        - job: portable-source
+          artifacts: true
+        - job: "fedora31-build"
+          artifacts: true
+    tags:
+        - linux
+    image: "graphviz/graphviz:fedora31"
+
+fedora32-test:
+    <<: *test_definition
+    needs:
+        - job: portable-source
+          artifacts: true
+        - job: "fedora32-build"
+          artifacts: true
+    tags:
+        - linux
+    image: "graphviz/graphviz:fedora32"
+
+fedora33-test:
+    <<: *test_definition
+    needs:
+        - job: portable-source
+          artifacts: true
+        - job: "fedora33-build"
+          artifacts: true
+    tags:
+        - linux
+    image: "graphviz/graphviz:fedora33"
+
+deployment:
+    stage: deploy
+    script:
+        - GV_VERSION=$( cat VERSION )
+        - COLLECTION=$( cat COLLECTION )
+        - eval $(ssh-agent -s)
+        - cat "$DEPLOY_PRIVATE_KEY" | tr -d '\r' | ssh-add - > /dev/null
+        - mkdir -p ~/.ssh
+        - chmod 700 ~/.ssh
+        - ssh-keyscan "$DEPLOY_HOST" >> ~/.ssh/known_hosts
+        - chmod 644 ~/.ssh/known_hosts
+        - chmod -R o-rwx Packages
+        - chmod -R g-wx Packages
+        - chmod -R g+X Packages
+        - ssh "$DEPLOY_USER"@"$DEPLOY_HOST" 'rm -rf Packages/'"$COLLECTION"'/{fedora,centos,ubuntu}'
+        - scp -r Packages/* "$DEPLOY_USER"@"$DEPLOY_HOST"':'Packages/
+        - ssh "$DEPLOY_USER"@"$DEPLOY_HOST" 'for i in Packages/'"$COLLECTION"'/{fedora,centos}/*/{source,os/*,debug/*}; do createrepo $i; done'
+        - scp graphviz-fedora.repo graphviz-centos.repo "$DEPLOY_USER"@"$DEPLOY_HOST"':'Packages/
+        - ssh "$DEPLOY_USER"@"$DEPLOY_HOST" mkdir -p Packages/"$COLLECTION"/portable_source
+        - md5sum graphviz-"$GV_VERSION".tar.gz >graphviz-"$GV_VERSION".tar.gz.md5
+        - scp graphviz-"$GV_VERSION".tar.gz graphviz-"$GV_VERSION".tar.gz.md5 "$DEPLOY_USER"@"$DEPLOY_HOST"':'Packages/"$COLLECTION"/portable_source/
+    only:
+        - master@graphviz/graphviz
+    tags:
+        - graphviz,deploy

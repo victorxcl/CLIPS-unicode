@@ -1,68 +1,9 @@
-[submodule "lib3rd/submodule/rxcpp.git"]
-	path = lib3rd/submodule/rxcpp.git
-	url = https://github.com/ReactiveX/RxCpp.git
-	branch = master
-[submodule "lib3rd/submodule/catch2.git"]
-	path = lib3rd/submodule/catch2.git
-	url = https://github.com/catchorg/Catch2.git
-	branch = master
-[submodule "lib3rd/submodule/cppcoro.git"]
-	path = lib3rd/submodule/cppcoro.git
-	url = https://github.com/lewissbaker/cppcoro.git
-	branch = master
-[submodule "lib3rd/submodule/cpplinq.git"]
-	path = lib3rd/submodule/cpplinq.git
-	url = https://github.com/mrange/cpplinq.git
-	branch = master
-[submodule "lib3rd/submodule/cppzmq.git"]
-	path = lib3rd/submodule/cppzmq.git
-	url = https://github.com/zeromq/cppzmq.git
-	branch = master
-[submodule "lib3rd/submodule/libzmq.git"]
-	path = lib3rd/submodule/libzmq.git
-	url = https://github.com/zeromq/libzmq.git
-	branch = master
-[submodule "lib3rd/submodule/rpclib.git"]
-	path = lib3rd/submodule/rpclib.git
-	url = https://github.com/rpclib/rpclib.git
-	branch = master
-[submodule "lib3rd/submodule/fmt.git"]
-	path = lib3rd/submodule/fmt.git
-	url = https://github.com/fmtlib/fmt.git
-	branch = master
-[submodule "lib3rd/submodule/yoga.git"]
-	path = lib3rd/submodule/yoga.git
-	url = https://github.com/facebook/yoga.git
-	branch = master
-[submodule "lib3rd/submodule/clips_core_6_40.git"]
-	path = lib3rd/submodule/clips_core_6_40.git
-	url = /Users/pandaxcl/Library/Mobile Documents/com~apple~CloudDocs/xcl.gift/Self.gift/CLIPS-unicode.git
-	branch = clips_core_6_40
-[submodule "lib3rd/submodule/clips_uml.git"]
-	path = lib3rd/submodule/clips_uml.git
-	url = /Users/pandaxcl/Library/Mobile Documents/com~apple~CloudDocs/xcl.gift/Self.gift/CLIPS-unicode.git
-	branch = clips_uml
-[submodule "lib3rd/submodule/cucumber-cpp.git"]
-	path = lib3rd/submodule/cucumber-cpp.git
-	url = https://github.com/cucumber/cucumber-cpp.git
-	branch = master
-[submodule "lib3rd/submodule/rttr.git"]
-	path = lib3rd/submodule/rttr.git
-	url = https://github.com/rttrorg/rttr.git
-	branch = master
-[submodule "lib3rd/submodule/nlohmann-json.git"]
-	path = lib3rd/submodule/nlohmann-json.git
-	url = https://github.com/nlohmann/json.git
-	branch = master
-[submodule "lib3rd/submodule/graphviz.git"]
-	path = lib3rd/submodule/graphviz.git
-	url = https://gitlab.com/graphviz/graphviz.git
-	branch = master
-[submodule "lib3rd/submodule/grpc.git"]
-	path = lib3rd/submodule/grpc.git
-	url = https://github.com/grpc/grpc.git
-	branch = master
-[submodule "lib3rd/submodule/mstch.git"]
-	path = lib3rd/submodule/mstch.git
-	url = https://github.com/no1msd/mstch.git
-	branch = master
+[submodule "windows/dependencies/graphviz-build-utilities"]
+	path = windows/dependencies/graphviz-build-utilities
+	url = https://github.com/ErwinJanssen/graphviz-build-utilities.git
+[submodule "dependencies/criterion"]
+	path = dependencies/criterion
+	url = https://github.com/Snaipe/Criterion.git
+[submodule "windows/dependencies/libraries"]
+	path = windows/dependencies/libraries
+	url = https://github.com/ErwinJanssen/graphviz-windows-dependencies.git
