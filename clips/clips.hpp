@@ -393,7 +393,7 @@ namespace clips {
 
 namespace clips {
 
-    class CLIPS {
+    class CLIPS final {
         std::shared_ptr<Environment> env;
     public:
         CLIPS():CLIPS(nullptr) {}
@@ -478,6 +478,12 @@ namespace clips {
             return clips::boolean{false};
         }
     };
+
+    template<unsigned i, typename ... Args>
+    void user_function(std::shared_ptr<CLIPS>clips, Args && ... args)
+    {
+        user_function<i>(static_cast<Environment*>(*clips), std::forward<Args>(args)...);
+    }
 }//namespace clips
 
 #ifndef CLIPS_EXTENSION_TEST_BENCH_ENABLED
