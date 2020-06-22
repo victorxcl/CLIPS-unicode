@@ -137,8 +137,8 @@ void test_benchmark()
         BOOST_TEST_EQ(clips::string{"helloworld"}, std::any_cast<clips::string>(CLIPS.eval("(str-cat (hello) (world))")));
         
         
-        clips::user_function<__LINE__>(CLIPS, "good", static_cast<clips::string(*)(Environment*)>([](Environment*){ return clips::string{"good"}; }));
-        clips::user_function<__LINE__>(CLIPS, "luck", static_cast<clips::string(*)(Environment*)>([](Environment*){ return clips::string{"luck"}; }));
+        clips::user_function<__LINE__>(CLIPS, "good", static_cast<clips::string(*)(UDFContext*)>([](UDFContext*){ return clips::string{"good"}; }));
+        clips::user_function<__LINE__>(CLIPS, "luck", static_cast<clips::string(*)(UDFContext*)>([](UDFContext*){ return clips::string{"luck"}; }));
         
         BOOST_TEST_EQ(clips::string{"good"}, std::any_cast<clips::string>(CLIPS.eval("(good)")));
         BOOST_TEST_EQ(clips::string{"luck"}, std::any_cast<clips::string>(CLIPS.eval("(luck)")));
@@ -150,7 +150,7 @@ void test_benchmark()
             BOOST_TEST_EQ(clips::string{"luck"}, std::any_cast<clips::string>(multifield.at(1)));
         }
         {
-            clips::user_function<__LINE__>(CLIPS, "return-multifiled$", static_cast<clips::multifield(*)(Environment*)>([](Environment*){
+            clips::user_function<__LINE__>(CLIPS, "return-multifiled$", static_cast<clips::multifield(*)(UDFContext*)>([](UDFContext*){
                 return clips::multifield{
                     clips::string{"good"},
                     clips::symbol{"luck"},
@@ -406,11 +406,11 @@ void test_benchmark()
 
 namespace clips::extension {
 
-clips::string utility_read_command(Environment*environment, const char*logicalName)
+clips::string utility_read_command(UDFContext*udfc, const char*logicalName)
 {
     std::string command;
     while(!CompleteCommand(command.c_str())) {
-        int inchar = ReadRouter(environment, logicalName);
+        int inchar = ReadRouter(udfc->environment, logicalName);
         if (EOF == inchar)
             break;
         command += inchar;
@@ -418,11 +418,11 @@ clips::string utility_read_command(Environment*environment, const char*logicalNa
     return clips::string{command};
 }
 
-clips::string utility_read_json(Environment*environment, const char*logicalName)
+clips::string utility_read_json(UDFContext*udfc, const char*logicalName)
 {
     std::string json;
     while(!nlohmann::json::accept(json)) {
-        int inchar = ReadRouter(environment, logicalName);
+        int inchar = ReadRouter(udfc->environment, logicalName);
         if (EOF == inchar)
             break;
         json += inchar;
@@ -430,11 +430,11 @@ clips::string utility_read_json(Environment*environment, const char*logicalName)
     return clips::string{json};
 }
 
-clips::string utility_read_until(Environment*environment, const char*logicalName, const char*MATCH)
+clips::string utility_read_until(UDFContext*udfc, const char*logicalName, const char*MATCH)
 {
     std::string buffer;
     while(!boost::ends_with(buffer, MATCH)) {
-        int inchar = ReadRouter(environment, logicalName);
+        int inchar = ReadRouter(udfc->environment, logicalName);
         if (EOF == inchar)
             break;
         buffer += inchar;
@@ -442,7 +442,7 @@ clips::string utility_read_until(Environment*environment, const char*logicalName
     return clips::string{buffer.substr(0, buffer.length()-std::strlen(MATCH))};
 }
 
-clips::string utility_expand_for_eval(Environment*environment, const char*CODE)
+clips::string utility_expand_for_eval(UDFContext*udfc, const char*CODE)
 {
     std::string str1(u8R"===({"abc":",?A","def":",(expand$ ?B)"})===");
     
@@ -480,38 +480,38 @@ clips::string utility_expand_for_eval(Environment*environment, const char*CODE)
     return clips::string{buffer};
 }
 
-clips::string utility_expand_and_eval(Environment*environment, const char*CODE)
+clips::string utility_expand_and_eval(UDFContext*udfc, const char*CODE)
 {
-    auto buffer = utility_expand_for_eval(environment, CODE);
+    auto buffer = utility_expand_for_eval(udfc, CODE);
     CLIPSValue value;
-    EvalError err = Eval(environment, std::get<0>(buffer).c_str(), &value);
+    EvalError err = Eval(udfc->environment, std::get<0>(buffer).c_str(), &value);
     if (EE_NO_ERROR == err) {
         return clips::string{value.lexemeValue->contents};
     }
     return clips::string{""};
 }
 
-clips::integer utility_max_integer(Environment*environment)
+clips::integer utility_max_integer(UDFContext*udfc)
 {
     return std::numeric_limits<clips::integer>::max();
 }
-clips::integer utility_min_integer(Environment*environment)
+clips::integer utility_min_integer(UDFContext*udfc)
 {
     return std::numeric_limits<clips::integer>::min();
 }
 
-clips::symbol utility_newline(Environment*environment)
+clips::symbol utility_newline(UDFContext*udfc)
 {
     return clips::symbol{"\n"};
 }
 
-clips::symbol utility_uuidgen(Environment*environment)
+clips::symbol utility_uuidgen(UDFContext*udfc)
 {
     boost::uuids::uuid uuid = boost::uuids::random_generator()();
     return clips::symbol{boost::uuids::to_string(uuid)};
 }
 
-static std::string _utility_string_join(Environment*environment, const clips::multifield&m, const char* sep)
+static std::string _utility_string_join(UDFContext*udfc, const clips::multifield&m, const char* sep)
 {
     std::vector<std::string> vs;
     for (auto&&v:m) {
@@ -520,111 +520,111 @@ static std::string _utility_string_join(Environment*environment, const clips::mu
         } else if (typeid(clips::string) == v.type()) {
             vs.push_back(std::get<0>(std::any_cast<clips::string>(v)));
         } else {
-            WriteString(environment, STDERR, "ERROR: in xxx-join$ expect element with type [STRING] or [SYMBOL], but got: ");
+            WriteString(udfc->environment, STDERR, "ERROR: in xxx-join$ expect element with type [STRING] or [SYMBOL], but got: ");
             /*  */ if (typeid(clips::integer) == v.type()) {
-                Writeln(environment, std::to_string(std::any_cast<clips::integer>(v)).c_str());
+                Writeln(udfc->environment, std::to_string(std::any_cast<clips::integer>(v)).c_str());
             } else if (typeid(clips::real) == v.type()) {
-                Writeln(environment, std::to_string(std::any_cast<clips::real>(v)).c_str());
+                Writeln(udfc->environment, std::to_string(std::any_cast<clips::real>(v)).c_str());
             } else if (typeid(clips::boolean) == v.type()) {
-                Writeln(environment, std::to_string(std::any_cast<clips::boolean>(v)).c_str());
+                Writeln(udfc->environment, std::to_string(std::any_cast<clips::boolean>(v)).c_str());
             } else {
-                Writeln(environment, "unknown data in multifield");
+                Writeln(udfc->environment, "unknown data in multifield");
             }
         }
     }
     return boost::algorithm::join(vs, sep);
 }
-clips::symbol utility_sym_join(Environment*environment, const clips::multifield&m, const char* sep)
+clips::symbol utility_sym_join(UDFContext*udfc, const clips::multifield&m, const char* sep)
 {
-    return clips::symbol{_utility_string_join(environment, m, sep)};
+    return clips::symbol{_utility_string_join(udfc, m, sep)};
 }
-clips::string utility_str_join(Environment*environment, const clips::multifield&m, const char* sep)
+clips::string utility_str_join(UDFContext*udfc, const clips::multifield&m, const char* sep)
 {
-    return clips::string{_utility_string_join(environment, m, sep)};
+    return clips::string{_utility_string_join(udfc, m, sep)};
 }
 
-clips::boolean utility_lexeme_starts_with(Environment*environment, const char*input, const char* with)
+clips::boolean utility_lexeme_starts_with(UDFContext*udfc, const char*input, const char* with)
 {
     return clips::boolean{boost::algorithm::starts_with(input, with)};
 }
-clips::boolean utility_lexeme_istarts_with(Environment*environment, const char*input, const char* with)
+clips::boolean utility_lexeme_istarts_with(UDFContext*udfc, const char*input, const char* with)
 {
     return clips::boolean{boost::algorithm::istarts_with(input, with)};
 }
-clips::boolean utility_lexeme_ends_with(Environment*environment, const char*input, const char* with)
+clips::boolean utility_lexeme_ends_with(UDFContext*udfc, const char*input, const char* with)
 {
     return clips::boolean{boost::algorithm::ends_with(input, with)};
 }
-clips::boolean utility_lexeme_iends_with(Environment*environment, const char*input, const char* with)
+clips::boolean utility_lexeme_iends_with(UDFContext*udfc, const char*input, const char* with)
 {
     return clips::boolean{boost::algorithm::iends_with(input, with)};
 }
-clips::boolean utility_lexeme_contains(Environment*environment, const char*input, const char* with)
+clips::boolean utility_lexeme_contains(UDFContext*udfc, const char*input, const char* with)
 {
     return clips::boolean{boost::algorithm::contains(input, with)};
 }
-clips::boolean utility_lexeme_icontains(Environment*environment, const char*input, const char* with)
+clips::boolean utility_lexeme_icontains(UDFContext*udfc, const char*input, const char* with)
 {
     return clips::boolean{boost::algorithm::icontains(input, with)};
 }
 
-void utility_sleep_seconds(Environment*environment, clips::integer n)
+void utility_sleep_seconds(UDFContext*udfc, clips::integer n)
 {
     std::this_thread::sleep_for(std::chrono::seconds(n));
 }
-void utility_sleep_milliseconds(Environment*environment, clips::integer n)
+void utility_sleep_milliseconds(UDFContext*udfc, clips::integer n)
 {
     std::this_thread::sleep_for(std::chrono::milliseconds(n));
 }
-void utility_sleep_microseconds(Environment*environment, clips::integer n)
+void utility_sleep_microseconds(UDFContext*udfc, clips::integer n)
 {
     std::this_thread::sleep_for(std::chrono::microseconds(n));
 }
-void utility_sleep_nanoseconds(Environment*environment, clips::integer n)
+void utility_sleep_nanoseconds(UDFContext*udfc, clips::integer n)
 {
     std::this_thread::sleep_for(std::chrono::nanoseconds(n));
 }
 
-clips::external_address utility_json_create(Environment*environment, const char*JSON)
+clips::external_address utility_json_create(UDFContext*udfc, const char*JSON)
 {
-    void *pointer = genalloc(environment, sizeof(nlohmann::json));
+    void *pointer = genalloc(udfc->environment, sizeof(nlohmann::json));
     new (pointer) nlohmann::json(nlohmann::json::parse(JSON));
     return clips::external_address{pointer};
 }
 
-void utility_json_dispose(Environment*environment, void*pointer)
+void utility_json_dispose(UDFContext*udfc, void*pointer)
 {
     static_cast<nlohmann::json*>(pointer)->~basic_json();
-    genfree(environment, pointer, sizeof(nlohmann::json));
+    genfree(udfc->environment, pointer, sizeof(nlohmann::json));
 }
 
-clips::boolean utility_json_validate(Environment*environment, const char*JSON)
+clips::boolean utility_json_validate(UDFContext*udfc, const char*JSON)
 {
     return clips::boolean{nlohmann::json::accept(JSON)};
 }
-clips::symbol utility_json_dump(Environment*environment, nlohmann::json*json, int indent)
+clips::symbol utility_json_dump(UDFContext*udfc, nlohmann::json*json, int indent)
 {
     return clips::symbol{static_cast<nlohmann::json*>(json)->dump(indent)};
 }
-clips::symbol utility_json_dump_dispose(Environment*environment, nlohmann::json*json, int indent)
+clips::symbol utility_json_dump_dispose(UDFContext*udfc, nlohmann::json*json, int indent)
 {
-    auto symbol_dump = utility_json_dump(environment, json, indent);
-    utility_json_dispose(environment, json);
+    auto symbol_dump = utility_json_dump(udfc, json, indent);
+    utility_json_dispose(udfc, json);
     return symbol_dump;
 }
-clips::external_address utility_json_diff(Environment*environment, nlohmann::json*A, nlohmann::json*B)
+clips::external_address utility_json_diff(UDFContext*udfc, nlohmann::json*A, nlohmann::json*B)
 {
-    void *pointer = genalloc(environment, sizeof(nlohmann::json));
+    void *pointer = genalloc(udfc->environment, sizeof(nlohmann::json));
     new (pointer) nlohmann::json(nlohmann::json::diff(*A, *B));
     return clips::external_address{pointer};
 }
-clips::external_address utility_json_patch(Environment*environment, nlohmann::json*A, nlohmann::json*B)
+clips::external_address utility_json_patch(UDFContext*udfc, nlohmann::json*A, nlohmann::json*B)
 {
-    void *pointer = genalloc(environment, sizeof(nlohmann::json));
+    void *pointer = genalloc(udfc->environment, sizeof(nlohmann::json));
     new (pointer) nlohmann::json(A->patch(*B));
     return clips::external_address{pointer};
 }
-clips::external_address utility_json_merge_patch(Environment*environment, nlohmann::json*A, nlohmann::json*B)
+clips::external_address utility_json_merge_patch(UDFContext*udfc, nlohmann::json*A, nlohmann::json*B)
 {
     A->merge_patch(*B);
     return clips::external_address{A};
@@ -913,8 +913,9 @@ void _socket_make_session(Environment*environment, std::shared_ptr<tcp::socket>s
     }
 }
 
-void socket_accept(Environment*environment, const char*ROUTER, const int PORT)
+void socket_accept(UDFContext*udfc, const char*ROUTER, const int PORT)
 {
+    Environment*environment = udfc->environment;
     if (nullptr == SocketData(environment)->acceptor) {
         SocketData(environment)->acceptor = std::make_shared<tcp::acceptor>(SocketData(environment)->io_context,
                                                                              tcp::endpoint(tcp::v4(), PORT));
@@ -935,8 +936,9 @@ void socket_accept(Environment*environment, const char*ROUTER, const int PORT)
     }
 }
 
-void socket_connect(Environment*environment, const char*ROUTER, const char* HOST, const char* PORT)
+void socket_connect(UDFContext*udfc, const char*ROUTER, const char* HOST, const char* PORT)
 {
+    Environment*environment = udfc->environment;
     if (nullptr == SocketData(environment)->acceptor) {
         SocketData(environment)->resolver = std::make_shared<tcp::resolver>(SocketData(environment)->io_context);
     }
@@ -958,8 +960,9 @@ void socket_connect(Environment*environment, const char*ROUTER, const char* HOST
     }
 }
 
-clips::string socket_peek_available(Environment*environment, const char*ROUTER)
+clips::string socket_peek_available(UDFContext*udfc, const char*ROUTER)
 {
+    Environment*environment = udfc->environment;
     const char* content = "";
     try{
         auto session = SocketData(environment)->session_list.at(ROUTER);
@@ -981,8 +984,9 @@ clips::string socket_peek_available(Environment*environment, const char*ROUTER)
     return clips::string{content};
 }
 
-clips::boolean socket_block_reading(Environment*environment, const char*ROUTER, bool block_reading)
+clips::boolean socket_block_reading(UDFContext*udfc, const char*ROUTER, bool block_reading)
 {
+    Environment*environment = udfc->environment;
     bool last_block_reading{false};
     try{
         auto session = SocketData(environment)->session_list.at(ROUTER);
@@ -1142,8 +1146,9 @@ zmq::socket_type _zeromq_socket_type_from_string(const char*SOCKET_TYPE)
     
     return socket_type;
 }
-void zeromq_bind(Environment*environment, const char* ROUTER, const char* ADDRESS, const char* SOCKET_TYPE)
+void zeromq_bind(UDFContext*udfc, const char* ROUTER, const char* ADDRESS, const char* SOCKET_TYPE)
 {
+    Environment*environment = udfc->environment;
     try {
         
         zmq::socket_type socket_type = _zeromq_socket_type_from_string(SOCKET_TYPE);
@@ -1161,8 +1166,9 @@ void zeromq_bind(Environment*environment, const char* ROUTER, const char* ADDRES
     }
 }
 
-void zeromq_connect(Environment*environment, const char* ROUTER, const char* ADDRESS, const char* SOCKET_TYPE)
+void zeromq_connect(UDFContext*udfc, const char* ROUTER, const char* ADDRESS, const char* SOCKET_TYPE)
 {
+    Environment*environment = udfc->environment;
     try {
         
         zmq::socket_type socket_type = _zeromq_socket_type_from_string(SOCKET_TYPE);
@@ -1180,8 +1186,9 @@ void zeromq_connect(Environment*environment, const char* ROUTER, const char* ADD
     }
 }
 
-void zeromq_close(Environment*environment, const char* ROUTER)
+void zeromq_close(UDFContext*udfc, const char* ROUTER)
 {
+    Environment*environment = udfc->environment;
     try {
         auto session = ZeromqData(environment)->session_map.at(ROUTER);
         session->socket = nullptr;
@@ -1244,8 +1251,9 @@ static void _AddUDF_zeromq_poll_create(Environment*environment)
            _UDF_zeromq_poll_create, "_UDF_zeromq_poll_create", nullptr);
 }
 
-static void zeromq_poll(Environment*environment, const char* KEY)
+static void zeromq_poll(UDFContext*udfc, const char* KEY)
 {
+    Environment*environment = udfc->environment;
     try {
         auto&&items = ZeromqData(environment)->pollitems_map.at(KEY);
         zmq::poll(items);
@@ -1259,8 +1267,9 @@ static void zeromq_poll(Environment*environment, const char* KEY)
     }
 }
 
-static clips::boolean zeromq_poll_router_has_message(Environment*environment, const char* KEY, const char*ROUTER)
+static clips::boolean zeromq_poll_router_has_message(UDFContext*udfc, const char* KEY, const char*ROUTER)
 {
+    Environment*environment = udfc->environment;
     try {
         const auto& session = ZeromqData(environment)->session_map.at(ROUTER);
         const auto&   items = ZeromqData(environment)->pollitems_map.at(KEY);
@@ -1285,8 +1294,9 @@ static clips::boolean zeromq_poll_router_has_message(Environment*environment, co
     return clips::boolean{false};
 }
 
-static clips::multifield zeromq_poll_routers_with_message(Environment*environment, const char* KEY)
+static clips::multifield zeromq_poll_routers_with_message(UDFContext*udfc, const char* KEY)
 {
+    Environment*environment = udfc->environment;
     clips::multifield multifield;
     try {
         std::unordered_map<void*, std::string> to_router;
@@ -1312,7 +1322,7 @@ static clips::multifield zeromq_poll_routers_with_message(Environment*environmen
     return multifield;
 }
 
-clips::symbol zeromq_version(Environment*environment)
+clips::symbol zeromq_version(UDFContext*udfc)
 {
     return clips::symbol{std::to_string(ZMQ_VERSION)};
 }
@@ -1578,8 +1588,9 @@ void _process_make_terminal(Environment*environment, const char*ROUTER)
     }
 }
 
-clips::string process_system_output(Environment*environment, const char* shellCommand)
+clips::string process_system_output(UDFContext*udfc, const char* shellCommand)
 {
+    Environment*environment = udfc->environment;
     std::future<std::string> output, error;
     
     try {
@@ -1598,8 +1609,9 @@ clips::string process_system_output(Environment*environment, const char* shellCo
     return clips::string{output.get()};
 }
 
-void process_terminal_start(Environment*environment, const char* ROUTER, const char*SHELL_COMMAND)
+void process_terminal_start(UDFContext*udfc, const char* ROUTER, const char*SHELL_COMMAND)
 {
+    Environment*environment = udfc->environment;
     try {
         _process_make_terminal(environment, ROUTER);
         auto terminal = ProcessData(environment)->terminal_list.at(ROUTER);
@@ -1612,8 +1624,9 @@ void process_terminal_start(Environment*environment, const char* ROUTER, const c
         WriteString(environment, STDERR, "\n");
     }
 }
-clips::boolean process_terminal_stop(Environment*environment, const char* ROUTER)
+clips::boolean process_terminal_stop(UDFContext*udfc, const char* ROUTER)
 {
+    Environment*environment = udfc->environment;
     try {
         auto terminal = ProcessData(environment)->terminal_list.at(ROUTER);
         DeleteRouter(environment, ROUTER);

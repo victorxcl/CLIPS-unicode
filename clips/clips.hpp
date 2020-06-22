@@ -17,8 +17,10 @@
 #include <vector>
 #include <string>
 #include <any>
+#include <tuple>
 
 namespace clips {
+
     /* The following codes are supported for return values and argument types:
        +------+---------------------------------------------------+
        | Code | Type                                              |
@@ -91,7 +93,7 @@ namespace clips {
     template<typename T>struct argument;
     template<typename T>struct primitive_value;
 #define CLIPS_ARGUMENT_VALUE(float, udfv_contents)                              \
-/**/    static float value(Environment*CLIPS, UDFContext *udfc, unsigned i){    \
+/**/    static float value(UDFContext *udfc, unsigned i){                       \
 /**/        UDFValue udfv;                                                      \
 /**/        UDFNthArgument(udfc, i, argument_code<float>::expect_bits, &udfv);  \
 /**/        return udfv_contents;                                               \
@@ -101,7 +103,7 @@ namespace clips {
 /**/        CLIPS_ARGUMENT_VALUE(float, udfv_contents)                          \
 /**/    };                                                                      \
 /**/    template<>struct primitive_value<float> {                               \
-/**/        static float apply(Environment*CLIPS, const CLIPSValue&udfv) {      \
+/**/        static float apply(UDFContext *udfc, const CLIPSValue&udfv) {       \
 /**/            return udfv_contents;                                           \
 /**/        }                                                                   \
 /**/    };/* CLIPS_ARGUMENT_TEMPLATE */
@@ -119,7 +121,7 @@ namespace clips {
     CLIPS_ARGUMENT_TEMPLATE(unsigned      long, /*                      */udfv.integerValue->contents)
     CLIPS_ARGUMENT_TEMPLATE(unsigned long long, /*                      */udfv.integerValue->contents)
 
-    CLIPS_ARGUMENT_TEMPLATE(              bool,               udfv.lexemeValue != FalseSymbol(CLIPS))
+    CLIPS_ARGUMENT_TEMPLATE(              bool,               udfv.lexemeValue != FalseSymbol(udfc->environment))
 //  CLIPS_ARGUMENT_TEMPLATE(           boolean,       boolean{udfv.lexemeValue->contents})
     CLIPS_ARGUMENT_TEMPLATE(       const char*,               udfv.lexemeValue->contents )
     CLIPS_ARGUMENT_TEMPLATE(       std::string,   std::string{udfv.lexemeValue->contents})
@@ -128,24 +130,24 @@ namespace clips {
     CLIPS_ARGUMENT_TEMPLATE(     instance_name, instance_name{udfv.lexemeValue->contents})
 
     template<>struct primitive_value<clips::multifield> {
-        static clips::multifield apply(Environment*CLIPS, const UDFValue&udfv) {
+        static clips::multifield apply(UDFContext*udfc, const UDFValue&udfv) {
             clips::multifield multifield;
             for (int i=0; i<udfv.multifieldValue->length; i++) {
                 CLIPSValue&v = udfv.multifieldValue->contents[i];
                 /*  */ if (v.header->type == FLOAT_TYPE) {
-                    auto&&x = primitive_value<clips::real>::apply(CLIPS, v);
+                    auto&&x = primitive_value<clips::real>::apply(udfc, v);
                     multifield.push_back(x);
                 } else if (v.header->type == INTEGER_TYPE) {
-                    auto&&x = primitive_value<clips::integer>::apply(CLIPS, v);
+                    auto&&x = primitive_value<clips::integer>::apply(udfc, v);
                     multifield.push_back(x);
                 } else if (v.header->type == SYMBOL_TYPE) {
-                    auto&&x = primitive_value<clips::symbol>::apply(CLIPS, v);
+                    auto&&x = primitive_value<clips::symbol>::apply(udfc, v);
                     multifield.push_back(x);
                 } else if (v.header->type == STRING_TYPE) {
-                    auto&&x = primitive_value<clips::string>::apply(CLIPS, v);
+                    auto&&x = primitive_value<clips::string>::apply(udfc, v);
                     multifield.push_back(x);
                 } else if (v.header->type == INSTANCE_NAME_TYPE) {
-                    auto&&x = primitive_value<clips::instance_name>::apply(CLIPS, v);
+                    auto&&x = primitive_value<clips::instance_name>::apply(udfc, v);
                     multifield.push_back(x);
                 }
             }
@@ -154,10 +156,10 @@ namespace clips {
     };
 
     template<>struct argument<clips::multifield> {
-        static clips::multifield value(Environment*CLIPS, UDFContext *udfc, unsigned i){
+        static clips::multifield value(UDFContext *udfc, unsigned i){
             UDFValue udfv;
             UDFNthArgument(udfc, i, argument_code<clips::multifield>::expect_bits, &udfv);
-            return primitive_value<clips::multifield>::apply(CLIPS, udfv);
+            return primitive_value<clips::multifield>::apply(udfc, udfv);
         }
     };
 
@@ -276,75 +278,83 @@ namespace clips {
         
         template<typename R, typename, typename A,typename B>struct _invoke;
         template<typename R, typename...Args, int...i> struct _invoke<R, std::integral_constant<int, 0>, m<Args...>, n<i...>> {
-            static R _function(Environment*CLIPS,std::function<R(Args...)>&&theFunc, UDFContext*udfc/*=nullptr*/) {
-                return theFunc(argument<Args>::value(CLIPS, udfc, i)...);
+            static R _function(std::function<R(Args...)>&&theFunc, UDFContext*udfc/*=nullptr*/) {
+                return theFunc(argument<Args>::value(udfc, i)...);
             }
         };
-        template<typename R, typename...Args, int...i> struct _invoke<R, Environment*, m<Args...>, n<i...>> {
-            static R _function(Environment*CLIPS,std::function<R(Environment*, Args...)>&&theFunc, UDFContext*udfc/*=nullptr*/) {
-                return theFunc(CLIPS, argument<Args>::value(CLIPS, udfc, i)...);
+        template<typename R, typename...Args, int...i> struct _invoke<R, UDFContext*, m<Args...>, n<i...>> {
+            static R _function(std::function<R(UDFContext*, Args...)>&&theFunc, UDFContext*udfc/*=nullptr*/) {
+                return theFunc(udfc, argument<Args>::value(udfc, i)...);
             }
         };
     }
     
     template<typename R, typename...Args>
-    R invoke_function(Environment*CLIPS,std::function<R(Args...)>&&lambda, UDFContext*udfc/*=nullptr*/) {
+    R invoke_function(std::function<R(Args...)>&&lambda, UDFContext*udfc/*=nullptr*/) {
         using namespace __private;
         static_assert(sizeof...(Args)<=n<>::max_value, "Error: Only support max 15 arguments in CLIPS's C function");
         return _invoke<R, std::integral_constant<int,0>, m<Args...>, typename build_n<sizeof...(Args)>::type>
-        /*  */ ::_function(CLIPS, std::move(lambda), udfc);
+        /*  */ ::_function(std::move(lambda), udfc);
     }
     template<typename R, typename...Args>
-    R invoke_function(Environment*CLIPS,std::function<R(Environment*,Args...)>&&lambda, UDFContext*udfc/*=nullptr*/) {
+    R invoke_function(std::function<R(UDFContext*,Args...)>&&lambda, UDFContext*udfc/*=nullptr*/) {
         using namespace __private;
         static_assert(sizeof...(Args)<=n<>::max_value, "Error: Only support max 15 arguments in CLIPS's C function");
-        return _invoke<R, Environment*, m<Args...>, typename build_n<sizeof...(Args)>::type>
-        /*  */ ::_function(CLIPS, std::move(lambda), udfc);
+        return _invoke<R, UDFContext*, m<Args...>, typename build_n<sizeof...(Args)>::type>
+        /*  */ ::_function(std::move(lambda), udfc);
     }
 
     template<typename R>
-    R invoke_function(Environment*CLIPS,std::function<R(Environment*)>&&lambda, UDFContext*udfc/*=nullptr*/) {
-        return lambda(CLIPS);
+    R invoke_function(std::function<R(UDFContext*)>&&lambda, UDFContext*udfc/*=nullptr*/) {
+        return lambda(udfc);
     }
 
     template<typename R>
-    R invoke_function(Environment*CLIPS,std::function<R()>&&lambda, UDFContext*udfc/*=nullptr*/) {
+    R invoke_function(std::function<R()>&&lambda, UDFContext*udfc/*=nullptr*/) {
         return lambda();
     }
     
     template<unsigned i, class R, class...Args> struct is_void_return {
         static std::function<R(Args...)> lambda;
-        static void f(Environment*CLIPS, UDFContext *udfc, UDFValue*udfv) {
+        static void f(Environment*environment, UDFContext *udfc, UDFValue*udfv) {
             enum { code = return_code<R>::value };
-            create_primitive_value<code>::apply(CLIPS, udfv, invoke_function(CLIPS, std::move(lambda), udfc));
+            create_primitive_value<code>::apply(environment, udfv, invoke_function(std::move(lambda), udfc));
         }
     };
-    template<unsigned i, class...Args> struct is_void_return<i, void, Args...> {
+    template<unsigned i, /*    */ class...Args> struct is_void_return<i, void, Args...> {
         static std::function<void(Args...)>lambda;
-        static void f(Environment*CLIPS, UDFContext *udfc, UDFValue*udfv) {
-            invoke_function(CLIPS,std::move(lambda), udfc);
+        static void f(Environment*environment, UDFContext *udfc, UDFValue*udfv) {
+            invoke_function(std::move(lambda), udfc);
         }
     };
-    template<unsigned i,class R,class...Args> struct is_void_return<i, R, Environment*, Args...> {
-        static std::function<R(Environment*, Args...)> lambda;
-        static void f(Environment*CLIPS, UDFContext *udfc, UDFValue*udfv) {
+    template<unsigned i, class R, class...Args> struct is_void_return<i, R, UDFContext*, Args...> {
+        static std::function<R(UDFContext*, Args...)> lambda;
+        static void f(Environment*environment, UDFContext *udfc, UDFValue*udfv) {
             enum { code = return_code<R>::value };
-            create_primitive_value<code>::apply(CLIPS, udfv, invoke_function(CLIPS, std::move(lambda), udfc));
+            create_primitive_value<code>::apply(environment, udfv, invoke_function(std::move(lambda), udfc));
         }
     };
-    template<unsigned i,class...Args> struct is_void_return<i, void, Environment*, Args...> {
-        static std::function<void(Environment*, Args...)>lambda;
-        static void f(Environment*CLIPS, UDFContext *udfc, UDFValue*udfv) {
-            invoke_function(CLIPS,std::move(lambda), udfc);
+    template<unsigned i, /*    */ class...Args> struct is_void_return<i, void, UDFContext*, Args...> {
+        static std::function<void(UDFContext*, Args...)>lambda;
+        static void f(Environment*environment, UDFContext *udfc, UDFValue*udfv) {
+            invoke_function(std::move(lambda), udfc);
         }
     };
     
-    template<unsigned i, typename R, typename...Args> std::function<   R(/*          */Args...)> is_void_return<i,   R,Args...>::lambda;
-    template<unsigned i, /*       */ typename...Args> std::function<void(/*          */Args...)> is_void_return<i,void,Args...>::lambda;
-    template<unsigned i, typename R, typename...Args> std::function<   R(Environment*, Args...)> is_void_return<i,    R, Environment*, Args...>::lambda;
-    template<unsigned i, /*       */ typename...Args> std::function<void(Environment*, Args...)> is_void_return<i, void, Environment*, Args...>::lambda;
+    template<unsigned i, typename R, typename...Args> std::function<   R(/*         */Args...)> is_void_return<i,    R, Args...>::lambda;
+    template<unsigned i, /*       */ typename...Args> std::function<void(/*         */Args...)> is_void_return<i, void, Args...>::lambda;
+    template<unsigned i, typename R, typename...Args> std::function<   R(UDFContext*, Args...)> is_void_return<i,    R, UDFContext*, Args...>::lambda;
+    template<unsigned i, /*       */ typename...Args> std::function<void(UDFContext*, Args...)> is_void_return<i, void, UDFContext*, Args...>::lambda;
+
     template<unsigned i, typename R, typename...Args>
-    void user_function(Environment*CLIPS, const char*name, std::function<R(Args...)>lambda, void*context=nullptr) {
+    void user_function(Environment*CLIPS, const char*name, std::function<R(Args...)>&&lambda, void*context=nullptr) {
+        using Tuple = std::tuple<Args...>;
+        if constexpr (std::tuple_size<Tuple>::value > 0) {
+            using T_firstArgument = std::tuple_element_t<0, Tuple>;
+            static_assert(!std::is_same_v<Environment*, std::remove_reference_t<std::remove_cv_t<T_firstArgument>>>,
+                          "Error: clips.hpp only allow UDFContext* as the first argument of user defined function.");
+        }
+        
         using namespace __private;
         std::string argumentsCode = "*";
         build_arguments_code<R, Args...>::apply(argumentsCode, 1);
@@ -364,12 +374,12 @@ namespace clips {
         assert(AUE_NO_ERROR == ok);
     };
     template<unsigned i, typename R, typename...Args>
-    void user_function(Environment*CLIPS, const char*name, std::function<R(Environment*, Args...)>lambda, void*context=nullptr) {
+    void user_function(Environment*CLIPS, const char*name, std::function<R(UDFContext*, Args...)>&&lambda, void*context=nullptr) {
         using namespace __private;
         std::string argumentsCode = "*";
         build_arguments_code<R, Args...>::apply(argumentsCode, 1);// 参数数量和上面的不一样
         char returnCode[2] = {return_code<R>::value, '\0'};
-        using UDF = is_void_return<i, R, Environment*, Args...>; // 这里也和上面不一样
+        using UDF = is_void_return<i, R, UDFContext*, Args...>; // 这里也和上面不一样
         UDF::lambda = lambda;
         AddUDFError ok = \
         AddUDF(/* Environment*                   theEnv = */CLIPS,
