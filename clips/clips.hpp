@@ -274,54 +274,73 @@ namespace clips {
     };
  
     namespace __private{
-        template<typename...i>struct m {};
-        template<unsigned...i>struct n { enum { value=sizeof...(i), max_value=0xF}; };
-        template<unsigned>struct build_n;
-        template<>struct build_n<0x1> { typedef n<0x1> type; };
-        template<>struct build_n<0x2> { typedef n<0x1,0x2> type; };
-        template<>struct build_n<0x3> { typedef n<0x1,0x2,0x3> type; };
-        template<>struct build_n<0x4> { typedef n<0x1,0x2,0x3,0x4> type; };
-        template<>struct build_n<0x5> { typedef n<0x1,0x2,0x3,0x4,0x5> type; };
-        template<>struct build_n<0x6> { typedef n<0x1,0x2,0x3,0x4,0x5,0x6> type; };
-        template<>struct build_n<0x7> { typedef n<0x1,0x2,0x3,0x4,0x5,0x6,0x7> type; };
-        template<>struct build_n<0x8> { typedef n<0x1,0x2,0x3,0x4,0x5,0x6,0x7,0x8> type; };
-        template<>struct build_n<0x9> { typedef n<0x1,0x2,0x3,0x4,0x5,0x6,0x7,0x8,0x9> type; };
-        template<>struct build_n<0xA> { typedef n<0x1,0x2,0x3,0x4,0x5,0x6,0x7,0x8,0x9,0xA> type; };
-        template<>struct build_n<0xB> { typedef n<0x1,0x2,0x3,0x4,0x5,0x6,0x7,0x8,0x9,0xA,0xB> type; };
-        template<>struct build_n<0xC> { typedef n<0x1,0x2,0x3,0x4,0x5,0x6,0x7,0x8,0x9,0xA,0xB,0xC> type; };
-        template<>struct build_n<0xD> { typedef n<0x1,0x2,0x3,0x4,0x5,0x6,0x7,0x8,0x9,0xA,0xB,0xC,0xD> type; };
-        template<>struct build_n<0xE> { typedef n<0x1,0x2,0x3,0x4,0x5,0x6,0x7,0x8,0x9,0xA,0xB,0xC,0xD,0xE> type; };
-        template<>struct build_n<0xF> { typedef n<0x1,0x2,0x3,0x4,0x5,0x6,0x7,0x8,0x9,0xA,0xB,0xC,0xD,0xE,0xF> type; };
-        
-    template<typename R, typename, typename A, typename B>struct _invoke;
-        template<typename R, typename...Args, int...i>
-        struct _invoke<R, std::integral_constant<int, 0>, m<Args...>, n<i...>> {
-            static R _function(std::function<R(/*        */ Args...)>&&theFunc, UDFContext*udfc/* =nullptr */) {
-                return theFunc(argument<Args>::value(udfc, i)...);
-            }
-        };
-        template<typename R, typename...Args, int...i>
-        struct _invoke<R,                    UDFContext*, m<Args...>, n<i...>> {
-            static R _function(std::function<R(UDFContext*, Args...)>&&theFunc, UDFContext*udfc/* =nullptr */) {
-                return theFunc(udfc, argument<Args>::value(udfc, i)...);
-            }
-        };
-    }
     
+        template<typename R, typename, typename A, int...i>struct _invoke;
+        template<typename R, typename...Args, int...i>
+        struct _invoke<R, std::integral_constant<int, 0>, std::tuple<Args...>, i...> {
+            static R _function(std::function<R(/*        */ Args...)>&&_ff, UDFContext*udfc/* =nullptr */) {
+                return _ff(/* */ argument<Args>::value(udfc, i)...);
+            }
+        };
+        template<typename R, typename...Args, int...i>
+        struct _invoke<R,                    UDFContext*, std::tuple<Args...>, i...> {
+            static R _function(std::function<R(UDFContext*, Args...)>&&_ff, UDFContext*udfc/* =nullptr */) {
+                return _ff(udfc, argument<Args>::value(udfc, i)...);
+            }
+        };
+    
+    } // namespace __private
+
+#define CLIPS_CONSTEXPR_IF_STATEMENTS(R, C)                                                                 \
+/**/static_assert(sizeof...(Args)<=15, "Error: Only support max 15 arguments in CLIPS's C function");       \
+/**/constexpr int _N_ = sizeof...(Args);                                                                    \
+/**/using         _T_ = std::tuple<Args...>;                                                                \
+/**//*---*/if constexpr ( 1 == _N_) {                                                                       \
+/**/    return _invoke<R, C, _T_, 1/*------------------------------*/>::_function(std::move(lambda), udfc); \
+/**/} else if constexpr ( 2 == _N_) {                                                                       \
+/**/    return _invoke<R, C, _T_, 1,2/*----------------------------*/>::_function(std::move(lambda), udfc); \
+/**/} else if constexpr ( 3 == _N_) {                                                                       \
+/**/    return _invoke<R, C, _T_, 1,2,3/*--------------------------*/>::_function(std::move(lambda), udfc); \
+/**/} else if constexpr ( 4 == _N_) {                                                                       \
+/**/    return _invoke<R, C, _T_, 1,2,3,4/*------------------------*/>::_function(std::move(lambda), udfc); \
+/**/} else if constexpr ( 5 == _N_) {                                                                       \
+/**/    return _invoke<R, C, _T_, 1,2,3,4,5/*----------------------*/>::_function(std::move(lambda), udfc); \
+/**/} else if constexpr ( 6 == _N_) {                                                                       \
+/**/    return _invoke<R, C, _T_, 1,2,3,4,5,6/*--------------------*/>::_function(std::move(lambda), udfc); \
+/**/} else if constexpr ( 7 == _N_) {                                                                       \
+/**/    return _invoke<R, C, _T_, 1,2,3,4,5,6,7/*------------------*/>::_function(std::move(lambda), udfc); \
+/**/} else if constexpr ( 8 == _N_) {                                                                       \
+/**/    return _invoke<R, C, _T_, 1,2,3,4,5,6,7,8/*----------------*/>::_function(std::move(lambda), udfc); \
+/**/} else if constexpr ( 9 == _N_) {                                                                       \
+/**/    return _invoke<R, C, _T_, 1,2,3,4,5,6,7,8,9/*--------------*/>::_function(std::move(lambda), udfc); \
+/**/} else if constexpr (10 == _N_) {                                                                       \
+/**/    return _invoke<R, C, _T_, 1,2,3,4,5,6,7,8,9,10/*-----------*/>::_function(std::move(lambda), udfc); \
+/**/} else if constexpr (11 == _N_) {                                                                       \
+/**/    return _invoke<R, C, _T_, 1,2,3,4,5,6,7,8,9,10,11/*--------*/>::_function(std::move(lambda), udfc); \
+/**/} else if constexpr (12 == _N_) {                                                                       \
+/**/    return _invoke<R, C, _T_, 1,2,3,4,5,6,7,8,9,10,11,12/*-----*/>::_function(std::move(lambda), udfc); \
+/**/} else if constexpr (13 == _N_) {                                                                       \
+/**/    return _invoke<R, C, _T_, 1,2,3,4,5,6,7,8,9,10,11,12,13/*--*/>::_function(std::move(lambda), udfc); \
+/**/} else if constexpr (14 == _N_) {                                                                       \
+/**/    return _invoke<R, C, _T_, 1,2,3,4,5,6,7,8,9,10,11,12,13,14   >::_function(std::move(lambda), udfc); \
+/**/} else if constexpr (15 == _N_) {                                                                       \
+/**/    return _invoke<R, C, _T_, 1,2,3,4,5,6,7,8,9,10,11,12,13,14,15>::_function(std::move(lambda), udfc); \
+/**/}                                                                                                       \
+
     template<typename R, typename...Args>
-    R invoke_function(std::function<R(Args...)>&&lambda, UDFContext*udfc/*=nullptr*/) {
+    R invoke_function(std::function<R(/*--------*/ Args...)>&&lambda, UDFContext*udfc/*=nullptr*/) {
         using namespace __private;
-        static_assert(sizeof...(Args)<=n<>::max_value, "Error: Only support max 15 arguments in CLIPS's C function");
-        return _invoke<R, std::integral_constant<int,0>, m<Args...>, typename build_n<sizeof...(Args)>::type>
-        /*  */ ::_function(std::move(lambda), udfc);
+        using Context = std::integral_constant<int,0>;
+        CLIPS_CONSTEXPR_IF_STATEMENTS(R, Context);
     }
     template<typename R, typename...Args>
-    R invoke_function(std::function<R(UDFContext*,Args...)>&&lambda, UDFContext*udfc/*=nullptr*/) {
+    R invoke_function(std::function<R(UDFContext*, Args...)>&&lambda, UDFContext*udfc/*=nullptr*/) {
         using namespace __private;
-        static_assert(sizeof...(Args)<=n<>::max_value, "Error: Only support max 15 arguments in CLIPS's C function");
-        return _invoke<R, UDFContext*, m<Args...>, typename build_n<sizeof...(Args)>::type>
-        /*  */ ::_function(std::move(lambda), udfc);
+        using Context = UDFContext*;
+        CLIPS_CONSTEXPR_IF_STATEMENTS(R, Context);
     }
+
+#undef CLIPS_CONSTEXPR_IF_STATEMENTS
 
     template<typename R>
     R invoke_function(std::function<R(UDFContext*)>&&lambda, UDFContext*udfc/*=nullptr*/) {
