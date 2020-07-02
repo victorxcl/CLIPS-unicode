@@ -51,12 +51,6 @@ void UserFunctions(Environment *environment)
 
 #if CLIPS_EXTENSION_TEST_BENCH_ENABLED
 
-template<char code> std::ostream&
-operator<<(std::ostream&os, const std::tuple<std::string, std::integral_constant<char, code>>&x)
-{
-    return os << std::get<0>(x);
-}
-
 #include <boost/core/lightweight_test.hpp>
 #include <boost/format.hpp>
 #include <nlohmann/json.hpp>
@@ -320,6 +314,9 @@ void test_benchmark()
     }
 #endif// CLIPS_EXTENSION_UTILITY_ENABLED
 #if CLIPS_EXTENSION_MUSTACHE_ENABLED
+    clips::string mustache_trim(const char*input);
+    clips::string mustache_render(Environment*environment, const char*VIEW, const char*CONTEXT);
+    clips::string mustache_render_with_partials(Environment*environment, const char* VIEW, const char* CONTEXT, const char*PARTIALS);
     {
         {
             std::string origin = u8R"(
@@ -1256,7 +1253,7 @@ static void zeromq_poll(UDFContext*udfc, const char* KEY)
     Environment*environment = udfc->environment;
     try {
         auto&&items = ZeromqData(environment)->pollitems_map.at(KEY);
-        zmq::poll(items);
+        zmq::poll(items, std::chrono::seconds::max());
     } catch (const std::exception& e) {
         WriteString(environment, STDERR, __PRETTY_FUNCTION__);
         WriteString(environment, STDERR, ": ");

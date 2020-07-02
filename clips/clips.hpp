@@ -18,6 +18,8 @@
 #include <string>
 #include <any>
 #include <tuple>
+#include <memory>
+#include <cstring>
 
 namespace clips {
 
@@ -38,17 +40,32 @@ namespace clips {
        |  v   | Void—No Return Value                              |
        |  *   | Any Type                                          |
        +------+---------------------------------------------------+ */
+
+    template<typename T, char __c__>
+    struct cxx_proxy_type_with_tag:std::pair<T, std::integral_constant<char,__c__>> {
+        using tag       = std::integral_constant<char,__c__>;
+        using self_type = cxx_proxy_type_with_tag<T,__c__>;
+        
+        cxx_proxy_type_with_tag() = default;
+        explicit cxx_proxy_type_with_tag(const std::string&x):std::pair<T, tag>(x, tag()) {}
+        explicit cxx_proxy_type_with_tag(            void* x):std::pair<T, tag>(x, tag()) {}
+        friend std::ostream& operator<<(std::ostream&os, const self_type&x) {
+            return os << std::get<0>(x);
+        }
+    };
     
     using integer           = long long;
     using real              = double;
     using boolean           = bool;//std::tuple<bool,        std::integral_constant<char,'b'>>;
-    using string            = std::tuple<std::string, std::integral_constant<char,'s'>>;
-    using symbol            = std::tuple<std::string, std::integral_constant<char,'y'>>;
-    using instance_name     = std::tuple<std::string, std::integral_constant<char,'n'>>;
-    using external_address  = std::tuple<void*,       std::integral_constant<char,'e'>>;
+//    using string            = std::tuple<std::string, std::integral_constant<char,'s'>>;
+//    using symbol            = std::tuple<std::string, std::integral_constant<char,'y'>>;
+//    using instance_name     = std::tuple<std::string, std::integral_constant<char,'n'>>;
+//    using external_address  = std::tuple<void*,       std::integral_constant<char,'e'>>;
+    using string            = cxx_proxy_type_with_tag<std::string, 's'>;
+    using symbol            = cxx_proxy_type_with_tag<std::string, 'y'>;
+    using instance_name     = cxx_proxy_type_with_tag<std::string, 'n'>;
+    using external_address  = cxx_proxy_type_with_tag<      void*, 'e'>;
     using multifield        = std::vector<std::any>;
-//    inline std::ostream&operator<<(std::ostream&os, const string&x) { return os << std::get<0>(x); }
-//    inline std::ostream&operator<<(std::ostream&os, const symbol&x) { return os << std::get<0>(x); }
     // ////////////////////////////////////////////////////////////////////////////////////////
     template<typename>struct type_code      {enum{value='*', expect_bits=0};};// * Any Type
     template<>struct type_code<bool>        {enum{value='b', expect_bits=BOOLEAN_BIT};};// b Boolean
@@ -276,13 +293,13 @@ namespace clips {
         template<>struct build_n<0xE> { typedef n<0x1,0x2,0x3,0x4,0x5,0x6,0x7,0x8,0x9,0xA,0xB,0xC,0xD,0xE> type; };
         template<>struct build_n<0xF> { typedef n<0x1,0x2,0x3,0x4,0x5,0x6,0x7,0x8,0x9,0xA,0xB,0xC,0xD,0xE,0xF> type; };
         
-        template<typename R, typename, typename A,typename B>struct _invoke;
+    template<typename R, typename, typename A, typename B>struct _invoke;
         template<typename R, typename...Args, int...i> struct _invoke<R, std::integral_constant<int, 0>, m<Args...>, n<i...>> {
-            static R _function(std::function<R(Args...)>&&theFunc, UDFContext*udfc/*=nullptr*/) {
+            static R _function(std::function<R(/*        */ Args...)>&&theFunc, UDFContext*udfc/*=nullptr*/) {
                 return theFunc(argument<Args>::value(udfc, i)...);
             }
         };
-        template<typename R, typename...Args, int...i> struct _invoke<R, UDFContext*, m<Args...>, n<i...>> {
+        template<typename R, typename...Args, int...i> struct _invoke<R,                    UDFContext*, m<Args...>, n<i...>> {
             static R _function(std::function<R(UDFContext*, Args...)>&&theFunc, UDFContext*udfc/*=nullptr*/) {
                 return theFunc(udfc, argument<Args>::value(udfc, i)...);
             }
@@ -540,10 +557,7 @@ namespace clips::extension {
 #endif// CLIPS_EXTENSION_ZEROMQ_ENABLED
 
 #if CLIPS_EXTENSION_MUSTACHE_ENABLED
-    void          mustache_initialize(Environment*environment);
-    clips::string mustache_trim(const char*input);
-    clips::string mustache_render(Environment*environment, const char*VIEW, const char*CONTEXT);
-    clips::string mustache_render_with_partials(Environment*environment, const char* VIEW, const char* CONTEXT, const char*PARTIALS);
+    void mustache_initialize(Environment*environment);
 #endif// CLIPS_EXTENSION_MUSTACHE_ENABLED
 
 #if CLIPS_EXTENSION_PROCESS_ENABLED
