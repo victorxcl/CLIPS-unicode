@@ -294,13 +294,15 @@ namespace clips {
         template<>struct build_n<0xF> { typedef n<0x1,0x2,0x3,0x4,0x5,0x6,0x7,0x8,0x9,0xA,0xB,0xC,0xD,0xE,0xF> type; };
         
     template<typename R, typename, typename A, typename B>struct _invoke;
-        template<typename R, typename...Args, int...i> struct _invoke<R, std::integral_constant<int, 0>, m<Args...>, n<i...>> {
-            static R _function(std::function<R(/*        */ Args...)>&&theFunc, UDFContext*udfc/*=nullptr*/) {
+        template<typename R, typename...Args, int...i>
+        struct _invoke<R, std::integral_constant<int, 0>, m<Args...>, n<i...>> {
+            static R _function(std::function<R(/*        */ Args...)>&&theFunc, UDFContext*udfc/* =nullptr */) {
                 return theFunc(argument<Args>::value(udfc, i)...);
             }
         };
-        template<typename R, typename...Args, int...i> struct _invoke<R,                    UDFContext*, m<Args...>, n<i...>> {
-            static R _function(std::function<R(UDFContext*, Args...)>&&theFunc, UDFContext*udfc/*=nullptr*/) {
+        template<typename R, typename...Args, int...i>
+        struct _invoke<R,                    UDFContext*, m<Args...>, n<i...>> {
+            static R _function(std::function<R(UDFContext*, Args...)>&&theFunc, UDFContext*udfc/* =nullptr */) {
                 return theFunc(udfc, argument<Args>::value(udfc, i)...);
             }
         };
