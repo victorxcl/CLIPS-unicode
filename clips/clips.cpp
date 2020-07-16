@@ -311,6 +311,13 @@ void test_benchmark()
             CLIPS.eval("(json-dispose ?document)");
             CLIPS.eval("(json-dispose ?patch   )");
         }
+        {
+            clips::CLIPS CLIPS;
+            // a JSON value
+            const std::string document = "Hello World";
+            BOOST_TEST_EQ(clips::string{"Hello World"}, std::any_cast<clips::string>(CLIPS.eval(u8R"===((base64-decode (base64-encode "Hello World")))===")));
+            BOOST_TEST_EQ(clips::string{"你好，世界！" }, std::any_cast<clips::string>(CLIPS.eval(u8R"===((base64-decode (base64-encode "你好，世界！")))===")));
+        }
     }
 #endif// CLIPS_EXTENSION_UTILITY_ENABLED
 #if CLIPS_EXTENSION_MUSTACHE_ENABLED
@@ -400,6 +407,7 @@ void test_benchmark()
 #include <boost/uuid/uuid_io.hpp>
 #include <boost/uuid/uuid_generators.hpp>
 #include <boost/algorithm/string/join.hpp>
+#include <boost/beast/core/detail/base64.hpp>
 
 namespace clips::extension {
 
@@ -506,6 +514,36 @@ clips::symbol utility_uuidgen(UDFContext*udfc)
 {
     boost::uuids::uuid uuid = boost::uuids::random_generator()();
     return clips::symbol{boost::uuids::to_string(uuid)};
+}
+
+clips::string utility_base64_encode(UDFContext*udfc, const clips::string&text)
+{
+    using namespace boost::beast::detail::base64;
+    
+    std::size_t length = std::size(std::get<0>(text));
+    const char* data   = std::data(std::get<0>(text));
+ 
+    std::string destination;
+    
+    destination.resize(encoded_size(length));
+    destination.resize(encode(&destination[0], data, length));
+    
+    return clips::string{destination};
+}
+
+clips::string utility_base64_decode(UDFContext*udfc, const clips::string&text)
+{
+    using namespace boost::beast::detail::base64;
+    
+    std::size_t length = std::size(std::get<0>(text));
+    const char* data   = std::data(std::get<0>(text));
+    
+    std::string destination;
+    
+    destination.resize(decoded_size(length));
+    destination.resize(std::get<0>(decode(&destination[0], data, length)));
+    
+    return clips::string{destination};
 }
 
 static std::string _utility_string_join(UDFContext*udfc, const clips::multifield&m, const char* sep)
@@ -785,8 +823,11 @@ void utility_initialize(Environment*environment)
     clips::user_function<__LINE__>(environment, "max-integer",  utility_max_integer);
     clips::user_function<__LINE__>(environment, "min-integer",  utility_min_integer);
     
-    clips::user_function<__LINE__>(environment, "newline", utility_newline);
-    clips::user_function<__LINE__>(environment, "uuidgen", utility_uuidgen);
+    clips::user_function<__LINE__>(environment, "newline",      utility_newline);
+    clips::user_function<__LINE__>(environment, "uuidgen",      utility_uuidgen);
+    
+    clips::user_function<__LINE__>(environment, "base64-encode",utility_base64_encode);
+    clips::user_function<__LINE__>(environment, "base64-decode",utility_base64_decode);
     
     clips::user_function<__LINE__>(environment, "sym-join$", utility_sym_join);
     clips::user_function<__LINE__>(environment, "str-join$", utility_str_join);

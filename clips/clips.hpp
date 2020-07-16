@@ -42,7 +42,7 @@ namespace clips {
        +------+---------------------------------------------------+ */
 
     template<typename T, char __c__>
-    struct cxx_proxy_type_with_tag:std::pair<T, std::integral_constant<char,__c__>> {
+    struct cxx_proxy_type_with_tag final:std::pair<T, std::integral_constant<char,__c__>> {
         using tag       = std::integral_constant<char,__c__>;
         using self_type = cxx_proxy_type_with_tag<T,__c__>;
         
