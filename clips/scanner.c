@@ -64,7 +64,7 @@
 /***************************************/
 
    static CLIPSLexeme            *ScanSymbol(Environment *,const char *,int,TokenType *);
-   static CLIPSLexeme            *ScanString(Environment *,const char *,int delimiterChar);
+   static CLIPSLexeme            *ScanString(Environment *,const char *);
    static void                    ScanNumber(Environment *,const char *,struct token *);
    static void                    DeallocateScannerData(Environment *);
 
@@ -164,11 +164,9 @@ void GetToken(
       /*========================*/
       /* Process String Tokens. */
       /*========================*/
-         
+
       case '"':
-      case '\'':
-      case '`':
-         theToken->lexemeValue = ScanString(theEnv,logicalName, inchar);
+         theToken->lexemeValue = ScanString(theEnv,logicalName);
          theToken->tknType = STRING_TOKEN;
          theToken->printForm = StringPrintForm(theEnv,theToken->lexemeValue->contents);
          break;
@@ -469,8 +467,7 @@ static CLIPSLexeme *ScanSymbol(
 /*************************************/
 static CLIPSLexeme *ScanString(
   Environment *theEnv,
-  const char *logicalName,
-  int delimiterChar)
+  const char *logicalName)
   {
    int inchar;
    size_t pos = 0;
@@ -484,7 +481,7 @@ static CLIPSLexeme *ScanString(
    /*============================================*/
 
    inchar = ReadRouter(theEnv,logicalName);
-   while ((inchar != delimiterChar) && (inchar != EOF))
+   while ((inchar != '"') && (inchar != EOF))
      {
       if (inchar == '\\')
         { inchar = ReadRouter(theEnv,logicalName); }

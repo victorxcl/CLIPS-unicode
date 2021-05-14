@@ -1,7 +1,7 @@
    /*******************************************************/
    /*      "C" Language Integrated Production System      */
    /*                                                     */
-   /*            CLIPS Version 6.40  11/13/17             */
+   /*            CLIPS Version 6.40  05/03/19             */
    /*                                                     */
    /*                COMMAND LINE MODULE                  */
    /*******************************************************/
@@ -131,7 +131,7 @@
 /***************************************/
 
 #if ! RUN_TIME
-   static int                     DoString(const char *,int,bool *,int delimiterChar);
+   static int                     DoString(const char *,int,bool *);
    static int                     DoComment(const char *,int);
    static int                     DoWhiteSpace(const char *,int);
    static void                    DefaultGetNextEvent(Environment *);
@@ -447,10 +447,8 @@ int CompleteCommand(
          /* is found, a complete command can not be made.        */
          /*======================================================*/
 
-         case '`' :
-         case '\'' :
          case '"' :
-           i = DoString(mstring,i,&complete, inchar);
+           i = DoString(mstring,i,&complete);
            if ((depth == 0) && complete) moreThanZero = true;
            break;
 
@@ -541,8 +539,7 @@ int CompleteCommand(
 static int DoString(
   const char *str,
   int pos,
-  bool *complete,
-  int delimiterChar)
+  bool *complete)
   {
    int inchar;
 
@@ -552,7 +549,7 @@ static int DoString(
    /*=================================================*/
 
    inchar = str[pos];
-   while (inchar  != delimiterChar)
+   while (inchar  != '"')
      {
       /*=====================================================*/
       /* If a \ is found, then the next character is ignored */
@@ -1038,8 +1035,10 @@ bool RouteCommand(
 
    if (top == NULL)
      {
+#if (! RUN_TIME) && (! BLOAD_ONLY)
       SetWarningFileName(theEnv,NULL);
       SetErrorFileName(theEnv,NULL);
+#endif
       ConstructData(theEnv)->DanglingConstructs = danglingConstructs;
       return false;
      }
@@ -1056,8 +1055,10 @@ bool RouteCommand(
    ReturnExpression(theEnv,top);
    ConstructData(theEnv)->DanglingConstructs = danglingConstructs;
    
+#if (! RUN_TIME) && (! BLOAD_ONLY)
    SetWarningFileName(theEnv,NULL);
    SetErrorFileName(theEnv,NULL);
+#endif
 
    /*=================================================*/
    /* Print the return value of the function/command. */
